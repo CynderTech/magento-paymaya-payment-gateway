@@ -44,6 +44,8 @@ class OrderSender extends SenderOrderSender {
 
     protected $logger;
 
+    protected $config;
+
     /**
      * @param Template $templateContainer
      * @param OrderIdentity $identityContainer
@@ -64,7 +66,8 @@ class OrderSender extends SenderOrderSender {
         PaymentHelper $paymentHelper,
         OrderResource $orderResource,
         \Magento\Framework\App\Config\ScopeConfigInterface $globalConfig,
-        ManagerInterface $eventManager
+        ManagerInterface $eventManager,
+        \PayMaya\Payment\Model\Config $config
     ) {
         parent::__construct($templateContainer, $identityContainer, $senderBuilderFactory, $logger, $addressRenderer, $paymentHelper, $orderResource, $globalConfig, $eventManager);
         $this->paymentHelper = $paymentHelper;
@@ -73,6 +76,7 @@ class OrderSender extends SenderOrderSender {
         $this->addressRenderer = $addressRenderer;
         $this->eventManager = $eventManager;
         $this->logger = $logger;
+        $this->config = $config;
     }
 
     /**
@@ -90,15 +94,18 @@ class OrderSender extends SenderOrderSender {
      * @param bool $forceSyncMode
      * @return bool
      */
-    public function send(Order $order, $forceSyncMode = false, $mayaPaid = false)
+    public function send(Order $order, $forceSyncMode = false, $manuallySend = false)
     {
         $this->identityContainer->setStore($order->getStore());
         $order->setSendEmail($this->identityContainer->isEnabled());
 
         if (!$this->globalConfig->getValue('sales_email/general/async_sending') || $forceSyncMode) {
             $payment_method = $order->getPayment()->getMethodInstance()->getCode();
+            $send_oc_before_ps = $this->config->getConfigData('paymaya_send_oc_before_ps', 'misc');
 
-            if ($payment_method !== 'paymaya_payment' || ($payment_method === 'paymaya_payment' && $mayaPaid)) {
+            $paidByMaya = $payment_method === 'paymaya_payment';
+
+            if (!$paidByMaya || ($paidByMaya && $manuallySend) || ($paidByMaya && $send_oc_before_ps)) {
                 if ($this->checkAndSend($order)) {
                     $order->setEmailSent(true);
                     $this->orderResource->saveAttribute($order, ['send_email', 'email_sent']);
@@ -116,6 +123,10 @@ class OrderSender extends SenderOrderSender {
     }
 
     public function sendMayaConfirmation(Order $order, $forceSyncMode = false) {
-        $this->send($order, $forceSyncMode, true);
+        $send_oc_before_ps = $this->config->getConfigData('paymaya_send_oc_before_ps', 'misc');
+
+        if (!$send_oc_before_ps) {
+            $this->send($order, $forceSyncMode, true);
+        }
     }
 }
