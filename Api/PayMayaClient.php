@@ -91,6 +91,8 @@ class PayMayaClient
     }
 
     private function formatBirthdate($rawBirthDate) {
+        if (!isset($rawBirthDate)) return '';
+
         $time = strtotime($rawBirthDate);
         return date('Y-m-d', $time);
     }
