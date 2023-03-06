@@ -35,13 +35,13 @@ class Order
     }
 
     /**
-     * Create transaction records for the order with a PayMongo payment ID
+     * Create transaction records for the order with a Maya payment ID
      */
     public function createTransaction($order, $paymentId) {
         /** Get associated payment model */
         $payment = $order->getPayment();
 
-        /** Set the transaction ID using PayMongo Payment ID */
+        /** Set the transaction ID using Maya ID */
         $payment->setTransactionId($paymentId);
 
         /**
@@ -52,7 +52,7 @@ class Order
 
         /**
          * Don't settle transactions in case of manual refunds since refunds are not
-         * yet available through the PayMongo API
+         * yet available through the extension
          */
         $payment->setIsTransactionClosed(0);
 

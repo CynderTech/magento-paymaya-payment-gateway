@@ -34,11 +34,11 @@ class Index extends \Magento\Framework\App\Action\Action
             $response = $this->client->createCheckout($order);
             $checkout = json_decode($response, true);
 
-            $this->logger->debug('Checkout response ' . $response);
+            $this->logger->debug('[Create Checkout][Response]' . $response);
 
             $this->_redirect($checkout["redirectUrl"]);
         } catch (ClientException $e) {
-            $this->logger->error('Checkout error ' . $e->getResponse()->getBody()->__toString());
+            $this->logger->error('[Create Checkout]' . $e->getResponse()->getBody()->__toString());
 
             $this->checkoutSession->restoreQuote();
             $this->messageManager->addErrorMessage('Something went wrong with the payment');
