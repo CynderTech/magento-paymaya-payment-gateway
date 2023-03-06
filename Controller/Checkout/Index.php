@@ -2,7 +2,7 @@
 
 namespace PayMaya\Payment\Controller\Checkout;
 
-use Exception;
+use GuzzleHttp\Exception\ClientException;
 
 class Index extends \Magento\Framework\App\Action\Action
 {
@@ -14,7 +14,7 @@ class Index extends \Magento\Framework\App\Action\Action
         \Magento\Framework\App\Action\Context $context,
         \PayMaya\Payment\Api\PayMayaClient $client,
         \Magento\Checkout\Model\Session $checkoutSession,
-        \Psr\Log\LoggerInterface $logger
+        \PayMaya\Payment\Logger\Logger $logger
     ) {
         parent::__construct($context);
 
@@ -37,7 +37,9 @@ class Index extends \Magento\Framework\App\Action\Action
             $this->logger->debug('Checkout response ' . $response);
 
             $this->_redirect($checkout["redirectUrl"]);
-        } catch (Exception $e) {
+        } catch (ClientException $e) {
+            $this->logger->error('Checkout error ' . $e->getResponse()->getBody()->__toString());
+
             $this->checkoutSession->restoreQuote();
             $this->messageManager->addErrorMessage('Something went wrong with the payment');
             $this->_redirect('checkout/cart');
