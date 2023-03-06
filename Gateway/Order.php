@@ -2,11 +2,15 @@
 
 namespace PayMaya\Payment\Gateway;
 
+use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Sales\Model\Order\Payment\Transaction;
 use Magento\Sales\Model\Order as MagentoOrder;
 
 class Order
 {
+    protected $order;
+    protected $orderSender;
+
     public function __construct(
         \Magento\Sales\Model\Order\Email\Sender\OrderSender $orderSender,
         \Magento\Sales\Api\Data\OrderInterface $order
@@ -65,7 +69,14 @@ class Order
         /** Save the transaction record */
         $transaction->save();
     }
-
+    
+    /**
+     * loadOrderByIncrementId
+     *
+     * @param  string $orderId
+     * @param  integer $count
+     * @return OrderInterface
+     */
     public function loadOrderByIncrementId($orderId, $count = 7)
     {
         $order = $this->order->loadByIncrementId($orderId);
