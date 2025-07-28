@@ -16,7 +16,7 @@ class CompatMethod extends \Magento\Payment\Model\Method\AbstractMethod
     protected $_canFetchTransactionInfo = false;
     // protected $_canUseForMultishipping = true;
 
-    public function isAvailable(\Magento\Quote\Api\Data\CartInterface $quote = null)
+    public function isAvailable(?\Magento\Quote\Api\Data\CartInterface $quote = null)
     {
         return true;
     }
