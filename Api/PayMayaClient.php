@@ -39,7 +39,8 @@ class PayMayaClient
         $this->client = $client;
     }
 
-    public function retrieveWebhooks() {
+    public function retrieveWebhooks()
+    {
         try {
             $response = $this->client->get('/checkout/v1/webhooks');
             return $response->getBody();
@@ -55,12 +56,14 @@ class PayMayaClient
         }
     }
 
-    public function deleteWebhook($id) {
+    public function deleteWebhook($id)
+    {
         $response = $this->client->delete("/checkout/v1/webhooks/{$id}");
         return $response->getBody();
     }
 
-    public function createWebhook($type, $url) {
+    public function createWebhook($type, $url)
+    {
         $response = $this->client->post('/checkout/v1/webhooks', [
             'json' => array(
                 'name' => $type,
@@ -71,7 +74,8 @@ class PayMayaClient
         return $response->getBody();
     }
 
-    public function createCheckout($order) {
+    public function createCheckout($order)
+    {
         $mode = $this->config->getConfigData('paymaya_mode', 'basic');
         $publicKey = $this->config->getConfigData("paymaya_{$mode}_pk", 'basic');
 
@@ -89,27 +93,30 @@ class PayMayaClient
         return $response->getBody();
     }
 
-    private function getAuthHeader($secretKey) {
+    private function getAuthHeader($secretKey)
+    {
         return "Basic " . base64_encode($secretKey . ':');
     }
 
-    private function formatBirthdate($rawBirthDate) {
+    private function formatBirthdate($rawBirthDate)
+    {
         if (!isset($rawBirthDate)) return '';
 
         $time = strtotime($rawBirthDate);
         return date('Y-m-d', $time);
     }
 
-    private function formatGender($rawGender) {
+    private function formatGender($rawGender)
+    {
         switch ($rawGender) {
             // Mapping out Unspecified option in Magento to Male in Maya by default
             case 0:
             case 1: {
-                return 'M';
-            }
+                    return 'M';
+                }
             case 2: {
-                return 'F';
-            }
+                    return 'F';
+                }
         }
     }
 
@@ -119,8 +126,7 @@ class PayMayaClient
 
         $orderItems = [];
 
-        foreach($order->getAllItems() as $item)
-        {
+        foreach ($order->getAllVisibleItems() as $item) {
             array_push($orderItems, [
                 "name" => $item->getName(),
                 "quantity" => $item->getQtyOrdered(),
@@ -146,7 +152,7 @@ class PayMayaClient
             "firstName" => $order->getCustomerFirstname(),
             "middleName" => $order->getCustomerMiddlename(),
             "lastName" => $order->getCustomerLastname(),
-            "birthday"=> $this->formatBirthdate($rawBirthDate),
+            "birthday" => $this->formatBirthdate($rawBirthDate),
             "sex" => $this->formatGender($rawGender),
             "contact" => [
                 "phone" => $addressGetter->getTelephone(),
@@ -189,7 +195,7 @@ class PayMayaClient
                 ]
             ],
             "buyer" => $buyerData,
-            "items"=> $orderItems,
+            "items" => $orderItems,
             "redirectUrl" => [
                 "success" => "{$baseUrl}paymaya/checkout/catcher?type=success",
                 "failure" => "{$baseUrl}paymaya/checkout/catcher?type=fail",
