@@ -11,7 +11,7 @@ class Config
     protected $configWriter;
     protected $logger;
 
-    public static $moduleVersion = "1.2.0";
+    public static $moduleVersion = "1.2.1";
 
     public function __construct(
         \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
