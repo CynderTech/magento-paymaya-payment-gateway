@@ -33,7 +33,7 @@ class Config
     /**
      * @var string
      */
-    public static $moduleVersion = "1.1.4";
+    public static $moduleVersion = "1.2.1";
 
     /**
      * Config constructor.
