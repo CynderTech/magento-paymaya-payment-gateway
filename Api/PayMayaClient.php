@@ -237,7 +237,7 @@ class PayMayaClient
             "firstName" => $order->getCustomerFirstname(),
             "middleName" => $order->getCustomerMiddlename(),
             "lastName" => $order->getCustomerLastname(),
-            "birthday"=> $this->formatBirthdate($rawBirthDate),
+            "birthday" => $this->formatBirthdate($rawBirthDate),
             "sex" => $this->formatGender($rawGender),
             "contact" => [
                 "phone" => $addressGetter->getTelephone(),
@@ -280,7 +280,7 @@ class PayMayaClient
                 ]
             ],
             "buyer" => $buyerData,
-            "items"=> $orderItems,
+            "items" => $orderItems,
             "redirectUrl" => [
                 "success" => "{$baseUrl}paymaya/checkout/catcher?type=success",
                 "failure" => "{$baseUrl}paymaya/checkout/catcher?type=fail",
