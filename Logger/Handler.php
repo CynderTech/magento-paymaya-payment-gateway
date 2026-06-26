@@ -13,7 +13,7 @@ class Handler extends \Magento\Framework\Logger\Handler\Base
     /**
      * @var string
      */
-    protected $fileNamePrefix = 'var/log/maya-log';
+    protected $fileNamePrefix = 'maya-log';
 
     /**
      * Handler constructor.
@@ -27,6 +27,8 @@ class Handler extends \Magento\Framework\Logger\Handler\Base
     ) {
         $this->filesystem = $filesystem;
 
+        $filePath = $filePath ?? 'var/log/';
+        
         $fileName = $this->fileNamePrefix . '-' . date('Y-m-d') . '.log';
 
         parent::__construct(

@@ -88,6 +88,16 @@ class Index extends \Magento\Framework\App\Action\Action
 
             $this->logger->debug('[Create Checkout][Response]' . $response);
 
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($checkout) || empty($checkout['redirectUrl'])) {
+                $this->logger->error('[Create Checkout] Invalid API response or missing redirectUrl from PayMaya.');
+                
+                $this->checkoutSession->restoreQuote();
+                $this->messageManager->addErrorMessage(__('Invalid response from payment gateway. Please try again.'));
+                
+                $resultRedirect->setPath('checkout/cart');
+                return $resultRedirect;
+            }
+
             $resultRedirect->setUrl($checkout["redirectUrl"]);
             return $resultRedirect;
             
@@ -95,7 +105,7 @@ class Index extends \Magento\Framework\App\Action\Action
             $this->logger->error('[Create Checkout] ' . $e->getResponse()->getBody()->__toString());
 
             $this->checkoutSession->restoreQuote();
-            $this->messageManager->addErrorMessage('Something went wrong with the payment');
+            $this->messageManager->addErrorMessage(__('Something went wrong with the payment'));
             
             $resultRedirect->setPath('checkout/cart');
             return $resultRedirect;

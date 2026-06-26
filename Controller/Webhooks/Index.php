@@ -36,8 +36,12 @@ class Index extends \Magento\Framework\App\Action\Action
     public function execute()
     {
         $this->webhooks->lock();
-        $this->webhooks->dispatchEvent('paymaya_webhook_event');
-        $this->webhooks->unlock();
+        
+        try {
+            $this->webhooks->dispatchEvent('paymaya_webhook_event');
+        } finally {
+            $this->webhooks->unlock();
+        }
 
         /** @var \Magento\Framework\Controller\Result\Raw $result */
         $result = $this->resultFactory->create(ResultFactory::TYPE_RAW);

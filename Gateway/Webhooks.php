@@ -75,6 +75,12 @@ class Webhooks
 
             $payload = json_decode($body, true);
 
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($payload)) {
+                throw new \InvalidArgumentException(
+                    'Invalid or malformed JSON payload received: ' . json_last_error_msg()
+                );
+            }
+
             $this->eventManager->dispatch(
                 $eventType,
                 [

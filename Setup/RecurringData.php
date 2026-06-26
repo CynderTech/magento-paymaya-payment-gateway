@@ -3,13 +3,13 @@
 namespace PayMaya\Payment\Setup;
 
 use Magento\Framework\Setup\ModuleContextInterface;
-use Magento\Framework\Setup\SchemaSetupInterface;
+use Magento\Framework\Setup\ModuleDataSetupInterface;
 
 /**
- * Class Recurring
- * Executed after every module schema installation/upgrade to verify webhook configurations.
+ * Class RecurringData
+ * Executed after every module data installation/upgrade to verify webhook configurations.
  */
-class Recurring implements \Magento\Framework\Setup\InstallSchemaInterface
+class RecurringData implements \Magento\Framework\Setup\InstallDataInterface
 {
     /**
      * @var \PayMaya\Payment\Model\Config
@@ -27,7 +27,7 @@ class Recurring implements \Magento\Framework\Setup\InstallSchemaInterface
     protected $storeManager;
 
     /**
-     * Recurring constructor.
+     * RecurringData constructor.
      *
      * @param \PayMaya\Payment\Logger\Logger $logger
      * @param \Magento\Store\Model\StoreManagerInterface $storeManager
@@ -44,13 +44,13 @@ class Recurring implements \Magento\Framework\Setup\InstallSchemaInterface
     }
 
     /**
-     * Install data/schema hooks for the module
+     * Install data hooks for the module
      *
-     * @param SchemaSetupInterface $setup
+     * @param ModuleDataSetupInterface $setup
      * @param ModuleContextInterface $context
      * @return void
      */
-    public function install(SchemaSetupInterface $setup, ModuleContextInterface $context)
+    public function install(ModuleDataSetupInterface $setup, ModuleContextInterface $context)
     {
         $this->logger->debug('Checking webhook URL default values');
 
@@ -67,7 +67,8 @@ class Recurring implements \Magento\Framework\Setup\InstallSchemaInterface
 
         if (empty($webhookBaseUrl)) {
             $rawBaseUrl = $store->getBaseUrl() ?? '';
-            $baseUrl = $rawBaseUrl !== '' ? substr($rawBaseUrl, 0, -1) : '';
+            
+            $baseUrl = $rawBaseUrl !== '' ? rtrim($rawBaseUrl, '/') : '';
 
             $this->config->setConfigData('webhook_base_url', "{$baseUrl}", 'webhooks');
         }

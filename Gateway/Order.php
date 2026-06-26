@@ -13,7 +13,7 @@ use Magento\Sales\Model\Order as MagentoOrder;
 class Order
 {
     /**
-     * @var MagentoOrder
+     * @var \Magento\Sales\Api\Data\OrderInterface
      */
     protected $order;
 
@@ -31,12 +31,12 @@ class Order
      * Order constructor.
      *
      * @param \PayMaya\Payment\Model\Order\Email\Sender\OrderSender $orderSender
-     * @param MagentoOrder $order
+     * @param \Magento\Sales\Api\Data\OrderInterface $order
      * @param \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
      */
     public function __construct(
         \PayMaya\Payment\Model\Order\Email\Sender\OrderSender $orderSender,
-        MagentoOrder $order,
+        \Magento\Sales\Api\Data\OrderInterface $order,
         \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
     ) {
         $this->orderSender = $orderSender;
@@ -135,6 +135,7 @@ class Order
      */
     public function loadOrderByIncrementId($orderId, $count = 7)
     {
+        /** @var \Magento\Sales\Model\Order $orderModel */
         $orderModel = $this->order;
         $order = $orderModel->loadByIncrementId($orderId);
 
