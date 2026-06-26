@@ -75,6 +75,9 @@ class Index extends \Magento\Framework\App\Action\Action
         try {
             $order = $this->orderRepository->get($orderId);
         } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+            $this->logger->error(sprintf('[Create Checkout] Order entity not found for ID %s', (string)$orderId));
+            $this->checkoutSession->restoreQuote();
+            $this->messageManager->addErrorMessage(__('Something went wrong with the payment'));
             $resultRedirect->setPath('checkout/cart');
             return $resultRedirect;
         }
