@@ -107,8 +107,7 @@ class Config
             $section = "_$sectionKey";
         }
 
-        $this->logger->info("Field {$field}");
-        $this->logger->info("Value {$value}");
+        $this->logger->debug(sprintf('Updating config field "%s"', $field));
 
         $data = $this->configWriter->save(
             "payment/paymaya_payment$section/$field",
