@@ -31,9 +31,9 @@ class Catcher extends \Magento\Framework\App\Action\Action
     protected $request;
 
     /**
-     * @var \Magento\Sales\Api\Data\OrderInterface
+     * @var \Magento\Sales\Model\OrderFactory
      */
-    protected $order;
+    protected $orderFactory;
 
     /**
      * @var \Psr\Log\LoggerInterface
@@ -52,7 +52,7 @@ class Catcher extends \Magento\Framework\App\Action\Action
      * @param \PayMaya\Payment\Api\PayMayaClient $client
      * @param \Magento\Framework\App\Request\Http $request
      * @param \Magento\Checkout\Helper\Data $checkoutHelper
-     * @param \Magento\Sales\Api\Data\OrderInterface $order
+     * @param \Magento\Sales\Model\OrderFactory $orderFactory
      * @param \Psr\Log\LoggerInterface $logger
      * @param \Magento\Quote\Api\CartRepositoryInterface $quoteRepository
      */
@@ -61,7 +61,7 @@ class Catcher extends \Magento\Framework\App\Action\Action
         \PayMaya\Payment\Api\PayMayaClient $client,
         \Magento\Framework\App\Request\Http $request,
         \Magento\Checkout\Helper\Data $checkoutHelper,
-        \Magento\Sales\Api\Data\OrderInterface $order,
+        \Magento\Sales\Model\OrderFactory $orderFactory,
         \Psr\Log\LoggerInterface $logger,
         \Magento\Quote\Api\CartRepositoryInterface $quoteRepository
     ) {
@@ -70,7 +70,7 @@ class Catcher extends \Magento\Framework\App\Action\Action
         $this->checkoutHelper = $checkoutHelper;
         $this->client = $client;
         $this->request = $request;
-        $this->order = $order;
+        $this->orderFactory = $orderFactory;
         $this->logger = $logger;
         $this->quoteRepository = $quoteRepository;
     }
@@ -91,9 +91,7 @@ class Catcher extends \Magento\Framework\App\Action\Action
                 $session = $this->checkoutHelper->getCheckout();
                 $incrementId = $session->getLastRealOrderId();
                 
-                /** @var \Magento\Sales\Model\Order $orderModel */
-                $orderModel = $this->order;
-                $order = $orderModel->loadByIncrementId($incrementId);
+                $order = $this->orderFactory->create()->loadByIncrementId($incrementId);
 
                 if (!$order->getId()) {
                     return $this->backToCart('No order for processing found');

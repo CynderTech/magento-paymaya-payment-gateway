@@ -57,15 +57,15 @@ class Recurring implements \Magento\Framework\Setup\InstallSchemaInterface
         /** @var \Magento\Store\Model\Store $store */
         $store = $this->storeManager->getStore();
 
-        $checkoutSuccessUrl = $this->config->getConfigData('webhook_base_url', 'webhooks', $store->getStoreId());
+        $webhookBaseUrl = $this->config->getConfigData('webhook_base_url', 'webhooks', $store->getStoreId());
 
-        $logCheckoutUrl = $checkoutSuccessUrl ?? '';
+        $logWebhookBaseUrl = $webhookBaseUrl ?? '';
         $logBaseUrl = $store->getBaseUrl() ?? '';
 
-        $this->logger->info("Checkout success URL is {$logCheckoutUrl}");
+        $this->logger->info("Webhook base URL is {$logWebhookBaseUrl}");
         $this->logger->info("Base URL is {$logBaseUrl}");
 
-        if (empty($checkoutSuccessUrl)) {
+        if (empty($webhookBaseUrl)) {
             $rawBaseUrl = $store->getBaseUrl() ?? '';
             $baseUrl = $rawBaseUrl !== '' ? substr($rawBaseUrl, 0, -1) : '';
 

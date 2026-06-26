@@ -13,7 +13,7 @@ class Handler extends \Magento\Framework\Logger\Handler\Base
     /**
      * @var string
      */
-    protected $fileNamePrefix = '/var/log/maya-log';
+    protected $fileNamePrefix = 'var/log/maya-log';
 
     /**
      * Handler constructor.

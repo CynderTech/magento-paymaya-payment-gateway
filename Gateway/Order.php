@@ -13,7 +13,7 @@ use Magento\Sales\Model\Order as MagentoOrder;
 class Order
 {
     /**
-     * @var \Magento\Sales\Api\Data\OrderInterface
+     * @var MagentoOrder
      */
     protected $order;
 
@@ -31,12 +31,12 @@ class Order
      * Order constructor.
      *
      * @param \PayMaya\Payment\Model\Order\Email\Sender\OrderSender $orderSender
-     * @param \Magento\Sales\Api\Data\OrderInterface $order
+     * @param MagentoOrder $order
      * @param \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
      */
     public function __construct(
         \PayMaya\Payment\Model\Order\Email\Sender\OrderSender $orderSender,
-        \Magento\Sales\Api\Data\OrderInterface $order,
+        MagentoOrder $order,
         \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
     ) {
         $this->orderSender = $orderSender;
@@ -76,9 +76,8 @@ class Order
 
         $order->setState(MagentoOrder::STATE_CANCELED);
         $order->setStatus(MagentoOrder::STATE_CANCELED);
-        $order->addCommentToStatusHistory("Failed payment {$safePaymentId}", MagentoOrder::STATE_HOLDED, true);
-        
-        // Service Contract Fix: Use repository instead of direct save()
+        $order->addCommentToStatusHistory("Failed payment {$safePaymentId}", $order->getStatus(), true);
+
         $this->orderRepository->save($order);
     }
 
@@ -86,25 +85,28 @@ class Order
      * Create transaction records for the order with a Maya payment ID
      *
      * @param MagentoOrder $order
-     * @param string|null $paymentId
+     * @param string $paymentId
      * @return void
+     * @throws \InvalidArgumentException
      */
     public function createTransaction($order, $paymentId)
     {
-        $safePaymentId = $paymentId ?? '';
+        if (empty($paymentId)) {
+            throw new \InvalidArgumentException('A valid Maya payment ID is required to create a transaction.');
+        }
 
         /** Get associated payment model */
         /** @var \Magento\Sales\Model\Order\Payment $payment */
         $payment = $order->getPayment();
 
         /** Set the transaction ID using Maya ID */
-        $payment->setTransactionId($safePaymentId);
+        $payment->setTransactionId($paymentId);
 
         /**
          * Since there are no manual captures, set the last transaction ID to the
-         * Paymongo Payment ID
+         * Maya Payment ID
          */
-        $payment->setLastTransId($safePaymentId);
+        $payment->setLastTransId($paymentId);
 
         /**
          * Don't settle transactions in case of manual refunds since refunds are not
@@ -118,7 +120,7 @@ class Order
         /** Save the transaction record */
         $transaction->save();
         
-        // Service Contract Fix: Saving the parent Order entity via its repository 
+        // Service Contract Fix: Saving the parent Order entity via its repository
         // automatically handles cascading updates cleanly down to its associated elements.
         $this->orderRepository->save($order);
     }
@@ -133,7 +135,6 @@ class Order
      */
     public function loadOrderByIncrementId($orderId, $count = 7)
     {
-        /** @var \Magento\Sales\Model\Order $orderModel */
         $orderModel = $this->order;
         $order = $orderModel->loadByIncrementId($orderId);
 
