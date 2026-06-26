@@ -43,8 +43,14 @@ class OrderSender extends SenderOrderSender
      */
     protected $eventManager;
 
+    /**
+     * @var \Psr\Log\LoggerInterface
+     */
     protected $logger;
 
+    /**
+     * @var \PayMaya\Payment\Model\Config
+     */
     protected $config;
 
     /**
@@ -57,6 +63,7 @@ class OrderSender extends SenderOrderSender
      * @param OrderResource $orderResource
      * @param \Magento\Framework\App\Config\ScopeConfigInterface $globalConfig
      * @param ManagerInterface $eventManager
+     * @param \PayMaya\Payment\Model\Config $config
      */
     public function __construct(
         Template $templateContainer,
@@ -70,7 +77,17 @@ class OrderSender extends SenderOrderSender
         ManagerInterface $eventManager,
         \PayMaya\Payment\Model\Config $config
     ) {
-        parent::__construct($templateContainer, $identityContainer, $senderBuilderFactory, $logger, $addressRenderer, $paymentHelper, $orderResource, $globalConfig, $eventManager);
+        parent::__construct(
+            $templateContainer,
+            $identityContainer,
+            $senderBuilderFactory,
+            $logger,
+            $addressRenderer,
+            $paymentHelper,
+            $orderResource,
+            $globalConfig,
+            $eventManager
+        );
         $this->paymentHelper = $paymentHelper;
         $this->orderResource = $orderResource;
         $this->globalConfig = $globalConfig;
@@ -93,6 +110,7 @@ class OrderSender extends SenderOrderSender
      *
      * @param Order $order
      * @param bool $forceSyncMode
+     * @param bool $manuallySend
      * @return bool
      */
     public function send(Order $order, $forceSyncMode = false, $manuallySend = false)
@@ -123,6 +141,13 @@ class OrderSender extends SenderOrderSender
         return false;
     }
 
+    /**
+     * Sends the Maya specific confirmation email.
+     *
+     * @param Order $order
+     * @param bool $forceSyncMode
+     * @return void
+     */
     public function sendMayaConfirmation(Order $order, $forceSyncMode = false)
     {
         $send_oc_before_ps = $this->config->getConfigData('paymaya_send_oc_before_ps', 'misc');

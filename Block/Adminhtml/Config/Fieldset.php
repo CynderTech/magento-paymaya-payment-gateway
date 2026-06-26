@@ -2,6 +2,10 @@
 
 namespace PayMaya\Payment\Block\Adminhtml\Config;
 
+/**
+ * Class Fieldset
+ * Renders custom fieldsets with a toggle action button in the Magento Admin configuration.
+ */
 class Fieldset extends \Magento\Config\Block\System\Config\Form\Fieldset
 {
     /**
@@ -104,6 +108,8 @@ class Fieldset extends \Magento\Config\Block\System\Config\Form\Fieldset
     }
 
     /**
+     * Get extra JavaScript for handling fieldset toggle behavior
+     *
      * @param \Magento\Framework\Data\Form\Element\AbstractElement $element
      * @return string
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)

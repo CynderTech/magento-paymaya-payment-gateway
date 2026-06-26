@@ -5,13 +5,45 @@ namespace PayMaya\Payment\Observer;
 use GuzzleHttp\Exception\ClientException;
 use Magento\Framework\Event\ObserverInterface;
 
-class AdminWebhookRegister implements ObserverInterface {
+/**
+ * Class AdminWebhookRegister
+ * Observer to register PayMaya webhooks upon config save.
+ */
+class AdminWebhookRegister implements ObserverInterface
+{
+    /**
+     * @var \PayMaya\Payment\Logger\Logger
+     */
     protected $logger;
+
+    /**
+     * @var \PayMaya\Payment\Model\Config
+     */
     protected $config;
+
+    /**
+     * @var \PayMaya\Payment\Api\PayMayaClient
+     */
     protected $client;
+
+    /**
+     * @var \Magento\Store\Model\StoreManagerInterface
+     */
     protected $storeManager;
+
+    /**
+     * @var string[]
+     */
     protected $overridable_webhooks;
 
+    /**
+     * AdminWebhookRegister constructor.
+     *
+     * @param \PayMaya\Payment\Logger\Logger $logger
+     * @param \PayMaya\Payment\Model\Config $config
+     * @param \Magento\Store\Model\StoreManagerInterface $storeManager
+     * @param \PayMaya\Payment\Api\PayMayaClient $client
+     */
     public function __construct(
         \PayMaya\Payment\Logger\Logger $logger,
         \PayMaya\Payment\Model\Config $config,
@@ -22,15 +54,22 @@ class AdminWebhookRegister implements ObserverInterface {
         $this->config = $config;
         $this->storeManager = $storeManager;
         $this->client = $client;
-        $this->overridable_webhooks = array(
+        
+        $this->overridable_webhooks = [
             'CHECKOUT_SUCCESS',
             'CHECKOUT_FAILURE',
             'PAYMENT_SUCCESS',
             'PAYMENT_FAILED',
             'PAYMENT_EXPIRED',
-        );
+        ];
     }
 
+    /**
+     * Execute observer to register webhooks
+     *
+     * @param \Magento\Framework\Event\Observer $observer
+     * @return void
+     */
     public function execute(\Magento\Framework\Event\Observer $observer)
     {
         $mode = $this->config->getConfigData('paymaya_mode', 'basic');
