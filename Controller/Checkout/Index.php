@@ -60,17 +60,24 @@ class Index extends \Magento\Framework\App\Action\Action
     public function execute()
     {
         $orderSession = $this->checkoutSession->getLastRealOrder();
+        $orderId = $orderSession->getId();
         
-        // Service Contract adjustment: Use the repository to load the concrete order entity
-        try {
-            $order = $this->orderRepository->get($orderSession->getId());
-        } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
-            $resultRedirect = $this->resultRedirectFactory->create();
+        $resultRedirect = $this->resultRedirectFactory->create();
+
+        // Guard against null/empty order IDs to prevent TypeErrors
+        if (!$orderId) {
+            $this->logger->error('[Create Checkout] Execution halted: No active order ID found in session.');
             $resultRedirect->setPath('checkout/cart');
             return $resultRedirect;
         }
-
-        $resultRedirect = $this->resultRedirectFactory->create();
+        
+        // Service Contract adjustment: Use the repository to load the concrete order entity
+        try {
+            $order = $this->orderRepository->get($orderId);
+        } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+            $resultRedirect->setPath('checkout/cart');
+            return $resultRedirect;
+        }
 
         try {
             $response = $this->client->createCheckout($order);
@@ -82,7 +89,7 @@ class Index extends \Magento\Framework\App\Action\Action
             return $resultRedirect;
             
         } catch (ClientException $e) {
-            $this->logger->error('[Create Checkout]' . $e->getResponse()->getBody()->__toString());
+            $this->logger->error('[Create Checkout] ' . $e->getResponse()->getBody()->__toString());
 
             $this->checkoutSession->restoreQuote();
             $this->messageManager->addErrorMessage('Something went wrong with the payment');

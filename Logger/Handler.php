@@ -19,9 +19,11 @@ class Handler extends \Magento\Framework\Logger\Handler\Base
      * Handler constructor.
      *
      * @param DriverInterface $filesystem
+     * @param string|null $filePath
      */
     public function __construct(
-        DriverInterface $filesystem
+        DriverInterface $filesystem,
+        ?string $filePath = null
     ) {
         $this->filesystem = $filesystem;
 
@@ -29,7 +31,7 @@ class Handler extends \Magento\Framework\Logger\Handler\Base
 
         parent::__construct(
             $filesystem,
-            null,
+            $filePath,
             $fileName
         );
     }

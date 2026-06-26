@@ -230,6 +230,12 @@ class PayMayaClient
         $billingAddress = $order->getBillingAddress();
 
         $addressGetter = isset($shippingAddress) ? $shippingAddress : $billingAddress;
+        
+        $street = $addressGetter->getStreet() ?: [];
+        $streetArray = is_array($street) ? $street : [$street];
+        $line1 = $streetArray[0] ?? '';
+        $line2 = $streetArray[1] ?? '';
+
         $rawBirthDate = $order->getCustomerDob();
         $rawGender = $order->getCustomerGender();
 
@@ -249,8 +255,8 @@ class PayMayaClient
                 "lastName" => $order->getCustomerLastname(),
                 "phone" => $addressGetter->getTelephone(),
                 "email" => $order->getCustomerEmail(),
-                "line1" => $addressGetter->getStreet(1)[0],
-                "line2" => $addressGetter->getStreet(2)[0] ?? '',
+                "line1" => $line1,
+                "line2" => $line2,
                 "city" => $addressGetter->getCity(),
                 "state" => $addressGetter->getRegionCode(),
                 "zipCode" => $addressGetter->getPostCode(),
@@ -258,8 +264,8 @@ class PayMayaClient
                 "shippingType" => "ST" // ST - for standard, SD - for same day
             ],
             "billingAddress" => [
-                "line1" => $addressGetter->getStreet(1)[0],
-                "line2" => $addressGetter->getStreet(2)[0] ?? '',
+                "line1" => $line1,
+                "line2" => $line2,
                 "city" => $addressGetter->getCity(),
                 "state" => $addressGetter->getRegionCode(),
                 "zipCode" => $addressGetter->getPostCode(),
