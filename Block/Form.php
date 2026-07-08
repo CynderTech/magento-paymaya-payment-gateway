@@ -1,24 +1,22 @@
 <?php
 
-
 namespace PayMaya\Payment\Block;
 
-
+/**
+ * Class Form
+ * Block class for rendering the payment form template in checkout.
+ */
 class Form extends \Magento\Payment\Block\Form\Cc
 {
-//    protected $_template = 'form/paymaya_payments.phtml';
+    // protected $_template = 'form/paymaya_payments.phtml';
 
+    /**
+     * @var mixed
+     */
     public $config;
+
+    /**
+     * @var mixed
+     */
     public $setupIntent;
-
-    public function __construct(
-        \Magento\Framework\View\Element\Template\Context $context,
-        \Magento\Payment\Model\Config $paymentConfig,
-
-        array $data = []
-    )
-    {
-        parent::__construct($context, $paymentConfig, $data);
-    }
-
 }

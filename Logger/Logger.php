@@ -2,4 +2,11 @@
 
 namespace PayMaya\Payment\Logger;
 
-class Logger extends \Monolog\Logger {}
+/**
+ * Class Logger
+ * Custom logger for PayMaya payment integration.
+ */
+// @phpstan-ignore-next-line
+class Logger extends \Monolog\Logger
+{
+}

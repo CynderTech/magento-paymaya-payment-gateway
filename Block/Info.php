@@ -9,7 +9,7 @@ use Magento\Framework\Phrase;
 use Magento\Payment\Block\ConfigurableInfo;
 
 /**
- * Class Info
+ * Payment information block for displaying PayMaya transaction details.
  */
 class Info extends ConfigurableInfo
 {

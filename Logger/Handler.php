@@ -4,22 +4,37 @@ namespace PayMaya\Payment\Logger;
 
 use Magento\Framework\Filesystem\DriverInterface;
 
+/**
+ * Class Handler
+ * Custom logger handler to generate daily Maya log files.
+ */
 class Handler extends \Magento\Framework\Logger\Handler\Base
 {
-    protected $filePath = BP . DIRECTORY_SEPARATOR . 'var' . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR;
+    /**
+     * @var string
+     */
     protected $fileNamePrefix = 'maya-log';
 
+    /**
+     * Handler constructor.
+     *
+     * @param DriverInterface $filesystem
+     * @param string|null $filePath
+     */
     public function __construct(
-        DriverInterface $filesystem
+        DriverInterface $filesystem,
+        ?string $filePath = null
     ) {
         $this->filesystem = $filesystem;
 
+        $filePath = $filePath ?? BP . DIRECTORY_SEPARATOR . 'var' . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR;
+        
         $fileName = $this->fileNamePrefix . '-' . date('Y-m-d') . '.log';
 
         parent::__construct(
             $filesystem,
-            $this->filePath,
-            $fileName,
+            $filePath,
+            $fileName
         );
     }
 }
