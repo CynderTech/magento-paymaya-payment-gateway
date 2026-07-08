@@ -27,7 +27,7 @@ class Handler extends \Magento\Framework\Logger\Handler\Base
     ) {
         $this->filesystem = $filesystem;
 
-        $filePath = $filePath ?? 'var/log/';
+        $filePath = $filePath ?? BP . DIRECTORY_SEPARATOR . 'var' . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR;
         
         $fileName = $this->fileNamePrefix . '-' . date('Y-m-d') . '.log';
 

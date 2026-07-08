@@ -195,6 +195,13 @@ class PayMayaClient
             case 2:
                 return 'F';
             default:
+                // Log unexpected gender values before silently coercing to prevent untraceable misgendering
+                $this->logger->warning(
+                    sprintf(
+                        '[PayMaya] Unmapped gender value "%s"; defaulting to M',
+                        (string)$rawGender
+                    )
+                );
                 return 'M';
         }
     }

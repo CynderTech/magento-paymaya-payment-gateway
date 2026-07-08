@@ -7,7 +7,9 @@ use Magento\Framework\Setup\ModuleDataSetupInterface;
 
 /**
  * Class RecurringData
- * Executed after every module data installation/upgrade to verify webhook configurations.
+ * * Note: Although this implements InstallDataInterface, Magento explicitly executes
+ * Setup/RecurringData.php at the end of EVERY setup:upgrade run. It bypasses
+ * the module data version check, making it safe for recurring data backfills.
  */
 class RecurringData implements \Magento\Framework\Setup\InstallDataInterface
 {

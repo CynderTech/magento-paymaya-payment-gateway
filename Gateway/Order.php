@@ -13,9 +13,9 @@ use Magento\Sales\Model\Order as MagentoOrder;
 class Order
 {
     /**
-     * @var \Magento\Sales\Api\Data\OrderInterface
+     * @var \Magento\Sales\Model\OrderFactory
      */
-    protected $order;
+    protected $orderFactory;
 
     /**
      * @var \PayMaya\Payment\Model\Order\Email\Sender\OrderSender
@@ -28,20 +28,28 @@ class Order
     protected $orderRepository;
 
     /**
+     * @var \Magento\Sales\Api\OrderPaymentRepositoryInterface
+     */
+    protected $paymentRepository;
+
+    /**
      * Order constructor.
      *
      * @param \PayMaya\Payment\Model\Order\Email\Sender\OrderSender $orderSender
-     * @param \Magento\Sales\Api\Data\OrderInterface $order
+     * @param \Magento\Sales\Model\OrderFactory $orderFactory
      * @param \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
+     * @param \Magento\Sales\Api\OrderPaymentRepositoryInterface $paymentRepository
      */
     public function __construct(
         \PayMaya\Payment\Model\Order\Email\Sender\OrderSender $orderSender,
-        \Magento\Sales\Api\Data\OrderInterface $order,
-        \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
+        \Magento\Sales\Model\OrderFactory $orderFactory,
+        \Magento\Sales\Api\OrderRepositoryInterface $orderRepository,
+        \Magento\Sales\Api\OrderPaymentRepositoryInterface $paymentRepository
     ) {
         $this->orderSender = $orderSender;
-        $this->order = $order;
+        $this->orderFactory = $orderFactory;
         $this->orderRepository = $orderRepository;
+        $this->paymentRepository = $paymentRepository;
     }
 
     /**
@@ -56,7 +64,6 @@ class Order
         $order->setState(MagentoOrder::STATE_PROCESSING);
         $order->setStatus(MagentoOrder::STATE_PROCESSING);
         
-        // Service Contract Fix: Use repository instead of direct save()
         $this->orderRepository->save($order);
 
         /** Send order confirmation e-mail */
@@ -114,15 +121,17 @@ class Order
          */
         $payment->setIsTransactionClosed(0);
 
+        // Use the repository to safely persist the payment entity and avoid 500 errors
+        $this->paymentRepository->save($payment);
+
         /** Add a transaction record */
         $transaction = $payment->addTransaction(Transaction::TYPE_ORDER, null, false);
 
+        // Reordered so Order saves BEFORE the standalone transaction to prevent orphans
+        $this->orderRepository->save($order);
+
         /** Save the transaction record */
         $transaction->save();
-        
-        // Service Contract Fix: Saving the parent Order entity via its repository
-        // automatically handles cascading updates cleanly down to its associated elements.
-        $this->orderRepository->save($order);
     }
 
     /**
@@ -135,9 +144,7 @@ class Order
      */
     public function loadOrderByIncrementId($orderId, $count = 7)
     {
-        /** @var \Magento\Sales\Model\Order $orderModel */
-        $orderModel = $this->order;
-        $order = $orderModel->loadByIncrementId($orderId);
+        $order = $this->orderFactory->create()->loadByIncrementId($orderId);
 
         if (empty($order->getId()) && $count >= 0) {
             // Webhooks Race Condition: Sometimes we may receive the webhook before Magento commits
