@@ -71,13 +71,35 @@ class PayMayaClient
         return $response->getBody();
     }
 
+    /**
+     * Retrieve a payment by its ID using the secret key.
+     * Throws \InvalidArgumentException for a malformed ID, a Guzzle exception for
+     * non-2xx responses or connection errors, and \UnexpectedValueException when
+     * the body is not a JSON object.
+     */
+    public function retrievePayment($paymentId) {
+        if (!is_string($paymentId) || !preg_match('/^[A-Za-z0-9-]{8,64}$/', $paymentId)) {
+            throw new \InvalidArgumentException('Invalid Maya payment ID');
+        }
+
+        $response = $this->client->get('/payments/v1/payments/' . $paymentId, ['timeout' => 15]);
+        $payment = json_decode((string) $response->getBody(), true);
+
+        if (!is_array($payment)) {
+            throw new \UnexpectedValueException('Maya payment response is not a JSON object');
+        }
+
+        return $payment;
+    }
+
     public function createCheckout($order) {
         $mode = $this->config->getConfigData('paymaya_mode', 'basic');
         $publicKey = $this->config->getConfigData("paymaya_{$mode}_pk", 'basic');
 
         $payload = $this->formatOrderForPayment($order);
 
-        $this->logger->debug('[Create Checkout][Payload]' . json_encode($payload));
+        $this->logger->debug('[Create Checkout] Order ' . $order->getIncrementId()
+            . ' ' . $payload['totalAmount']['value'] . ' ' . $payload['totalAmount']['currency']);
 
         $response = $this->client->post('/checkout/v1/checkouts', [
             'json' => $payload,

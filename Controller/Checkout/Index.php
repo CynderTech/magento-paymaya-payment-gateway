@@ -36,6 +36,8 @@ class Index extends \Magento\Framework\App\Action\Action
 
             $this->logger->debug('[Create Checkout][Response]' . $response);
 
+            $this->rememberCheckoutId($order, $checkout["checkoutId"] ?? null);
+
             $this->_redirect($checkout["redirectUrl"]);
         } catch (ClientException $e) {
             $this->logger->error('[Create Checkout]' . $e->getResponse()->getBody()->__toString());
@@ -43,6 +45,26 @@ class Index extends \Magento\Framework\App\Action\Action
             $this->checkoutSession->restoreQuote();
             $this->messageManager->addErrorMessage('Something went wrong with the payment');
             $this->_redirect('checkout/cart');
+        }
+    }
+
+    /**
+     * Maya's payment ID is the ID of the checkout that was paid, so keeping every checkout created for
+     * the order lets PaymentVerifier reject payments created through any other checkout.
+     */
+    private function rememberCheckoutId($order, $checkoutId)
+    {
+        if (!is_string($checkoutId) || $checkoutId === '') {
+            return;
+        }
+
+        try {
+            $payment = $order->getPayment();
+            \PayMaya\Payment\Gateway\PaymentVerifier::rememberCheckoutId($payment, $checkoutId);
+            $payment->save();
+        } catch (\Exception $e) {
+            // Not fatal: without it verification falls back to the reference, amount and currency checks.
+            $this->logger->error('[Create Checkout] Could not store the checkout ID: ' . $e->getMessage());
         }
     }
 }

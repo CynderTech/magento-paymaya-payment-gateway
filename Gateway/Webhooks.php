@@ -24,19 +24,22 @@ class Webhooks
         $this->eventManager = $eventManager;
     }
 
+    /**
+     * @return int HTTP status for Maya: 200 handled or ignored, 400 unreadable body,
+     *             500 on an internal error so that Maya retries later
+     */
     public function dispatchEvent($eventType)
     {
         try
         {
-            if ($this->request->getMethod() == 'GET')
-                throw new \Exception("Webhooks are working correctly!", 200);
-
             // Retrieve the request's body and parse it as JSON
-            $body = $this->request->getContent();
+            $payload = json_decode($this->request->getContent(), true);
 
-            $this->logger->debug('[Handle Webhook] For ' . $eventType . ' with payload ' . $body);
-
-            $payload = json_decode($body, true);
+            if (!is_array($payload))
+            {
+                $this->logger->warning('[Handle Webhook] Rejected ' . $eventType . ': body is not a JSON object');
+                return 400;
+            }
 
             $this->eventManager->dispatch(
                 $eventType,
@@ -46,10 +49,12 @@ class Webhooks
             );
 
             $this->logger->info("[Handle Webhook] 200 OK");
+            return 200;
         }
         catch (\Exception $e)
         {
             $this->logger->error('[Handle Webhook] ' . $e->getMessage());
+            return 500;
         }
     }
 

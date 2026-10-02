@@ -2,21 +2,20 @@
 
 namespace PayMaya\Payment\Gateway;
 
-use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Sales\Model\Order\Payment\Transaction;
 use Magento\Sales\Model\Order as MagentoOrder;
 
 class Order
 {
-    protected $order;
+    protected $orderFactory;
     protected $orderSender;
 
     public function __construct(
         \PayMaya\Payment\Model\Order\Email\Sender\OrderSender $orderSender,
-        \Magento\Sales\Api\Data\OrderInterface $order
+        \Magento\Sales\Model\OrderFactory $orderFactory
     ) {
         $this->orderSender = $orderSender;
-        $this->order = $order;
+        $this->orderFactory = $orderFactory;
     }
 
     /**
@@ -73,26 +72,16 @@ class Order
     }
 
     /**
-     * loadOrderByIncrementId
+     * Load a fresh order by increment ID. There is deliberately no retry/sleep: the order is
+     * committed before the customer is sent to Maya, and unknown IDs can be sent by anyone.
      *
      * @param  string $orderId
-     * @param  integer $count
-     * @return OrderInterface
+     * @return MagentoOrder|null
      */
-    public function loadOrderByIncrementId($orderId, $count = 7)
+    public function loadOrderByIncrementId($orderId)
     {
-        $order = $this->order->loadByIncrementId($orderId);
+        $order = $this->orderFactory->create()->loadByIncrementId($orderId);
 
-        if (empty($order) || empty($order->getId()) && $count >= 0) {
-            // Webhooks Race Condition: Sometimes we may receive the webhook before Magento commits the order to the database,
-            // so we give it a few seconds and try again. Can happen when multiple subscriptions are purchased together.
-            sleep(4);
-            return $this->loadOrderByIncrementId($orderId, $count - 1);
-        }
-
-        if (empty($order) || empty($order->getId()))
-            throw new \Exception("Received webhook with Order #$orderId but could not find the order in Magento; ignoring", 400);
-
-        return $order;
+        return $order && $order->getId() ? $order : null;
     }
 }
