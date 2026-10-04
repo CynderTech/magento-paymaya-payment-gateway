@@ -18,6 +18,7 @@ class PaymentVerifier
     const MAX_CHECKOUT_IDS = 10;
 
     // PAYMENT_CANCELLED (buyer walked away) is deliberately not actionable: the order stays pending.
+    const FAILURE_STATUSES = ['PAYMENT_FAILED', 'PAYMENT_EXPIRED'];
     const ACTIONABLE_STATUSES = ['PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'PAYMENT_EXPIRED'];
 
     protected $client;
@@ -127,7 +128,7 @@ class PaymentVerifier
         $payment->setAdditionalInformation(self::CHECKOUT_IDS_KEY, array_slice($ids, -self::MAX_CHECKOUT_IDS));
     }
 
-    private static function checkoutIds(Payment $payment)
+    public static function checkoutIds(Payment $payment)
     {
         $ids = $payment->getAdditionalInformation(self::CHECKOUT_IDS_KEY);
 

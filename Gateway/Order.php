@@ -7,15 +7,26 @@ use Magento\Sales\Model\Order as MagentoOrder;
 
 class Order
 {
-    protected $orderFactory;
+    protected $logger;
+    protected $orderCollectionFactory;
     protected $orderSender;
 
     public function __construct(
         \PayMaya\Payment\Model\Order\Email\Sender\OrderSender $orderSender,
-        \Magento\Sales\Model\OrderFactory $orderFactory
+        \Magento\Sales\Model\ResourceModel\Order\CollectionFactory $orderCollectionFactory,
+        \PayMaya\Payment\Logger\Logger $logger
     ) {
         $this->orderSender = $orderSender;
-        $this->orderFactory = $orderFactory;
+        $this->orderCollectionFactory = $orderCollectionFactory;
+        $this->logger = $logger;
+    }
+
+    /**
+     * Make a value taken from an unauthenticated request safe to log
+     */
+    public static function loggable($value)
+    {
+        return substr(preg_replace('/[^A-Za-z0-9._-]/', '?', (string) $value), 0, 64);
     }
 
     /**
@@ -96,14 +107,46 @@ class Order
     /**
      * Load a fresh order by increment ID. There is deliberately no retry/sleep: the order is
      * committed before the customer is sent to Maya, and unknown IDs can be sent by anyone.
+     * A plain collection keeps this to one query, as anyone can name an existing increment ID.
+     *
+     * Increment IDs are only unique per store, and Maya sends nothing but this ID. If several
+     * orders share it, the one whose stored checkout IDs contain $paymentId is the right one.
+     * When that is not exactly one order (for example both predate the stored checkout IDs) the
+     * webhook is ignored rather than guessed, and that is logged as critical: Maya is answered
+     * with 200 and will not retry, so such a payment has to be reconciled by hand.
      *
      * @param  string $orderId
+     * @param  string|null $paymentId
      * @return MagentoOrder|null
      */
-    public function loadOrderByIncrementId($orderId)
+    public function loadOrderByIncrementId($orderId, $paymentId = null)
     {
-        $order = $this->orderFactory->create()->loadByIncrementId($orderId);
+        $orders = array_values($this->orderCollectionFactory->create()
+            ->addFieldToFilter('increment_id', $orderId)
+            ->getItems());
 
-        return $order && $order->getId() ? $order : null;
+        if (count($orders) <= 1) {
+            return $orders ? $orders[0] : null;
+        }
+
+        $matches = array_values(array_filter($orders, function ($order) use ($paymentId) {
+            $payment = $order->getPayment();
+
+            return $paymentId !== null && $payment && in_array($paymentId, PaymentVerifier::checkoutIds($payment), true);
+        }));
+
+        if (count($matches) !== 1) {
+            $this->logger->critical(sprintf(
+                '[Load Order] %d orders share increment ID %s and %d of them own payment %s; ignoring the webhook, reconcile by hand.',
+                count($orders),
+                self::loggable($orderId),
+                count($matches),
+                self::loggable($paymentId)
+            ));
+
+            return null;
+        }
+
+        return $matches[0];
     }
 }

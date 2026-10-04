@@ -198,6 +198,105 @@ class PaymentWebhookObserverTest extends TestCase
         }
     }
 
+    private function twoLoads($first, $second)
+    {
+        $this->orderHelper->method('loadOrderByIncrementId')->willReturnOnConsecutiveCalls($first, $second);
+    }
+
+    private function orderInState($state, array $items = [], $id = 7)
+    {
+        $order = $this->createMock(Order::class);
+        $order->method('getId')->willReturn($id);
+        $order->method('getState')->willReturn($state);
+        $order->method('getAllItems')->willReturn($items);
+
+        return $order;
+    }
+
+    public function testSettledWhileVerifyingIsNotPaidAgain()
+    {
+        // The Maya call is slow: another request settled the order meanwhile.
+        $this->twoLoads($this->orderInState(Order::STATE_NEW), $this->orderInState(Order::STATE_PROCESSING));
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->expects($this->never())->method('createTransaction');
+        $this->orderHelper->expects($this->never())->method('setAsPaid');
+
+        $this->fire($this->forged);
+    }
+
+    public function testCanceledByAnAdminWhileVerifyingIsNotReopened()
+    {
+        $released = $this->createStub(Item::class);
+        $released->method('getQtyCanceled')->willReturn(1.0);
+        $fresh = $this->orderInState(Order::STATE_CANCELED, [$released]);
+        $this->twoLoads($this->orderInState(Order::STATE_NEW), $fresh);
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->method('hasComment')->willReturn(false);
+        $this->orderHelper->expects($this->never())->method('setAsPaid');
+        $this->orderHelper->expects($this->once())->method('addComment')->with($fresh, $this->anything());
+
+        $this->fire($this->forged);
+    }
+
+    public function testTheFreshlyLoadedOrderIsTheOneThatIsSaved()
+    {
+        $stale = $this->orderInState(Order::STATE_NEW);
+        $fresh = $this->orderInState(Order::STATE_NEW);
+        $this->twoLoads($stale, $fresh);
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->expects($this->once())->method('createTransaction')->with($this->identicalTo($fresh), 'x1234567');
+        $this->orderHelper->expects($this->once())->method('setAsPaid')->with($this->identicalTo($fresh));
+
+        $this->fire($this->forged);
+    }
+
+    public function testADifferentOrderOnReloadIsNotActedOn()
+    {
+        // The lookup flipped to another entity with the same increment id: never save that one.
+        $this->twoLoads($this->orderInState(Order::STATE_NEW, [], 7), $this->orderInState(Order::STATE_NEW, [], 8));
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->expects($this->never())->method('createTransaction');
+        $this->orderHelper->expects($this->never())->method('setAsPaid');
+        $this->orderHelper->expects($this->never())->method('setAsFailed');
+
+        $this->fire($this->forged);
+    }
+
+    public function testAStatusThatIsNeitherSuccessNorFailureChangesNothing()
+    {
+        $this->pendingOrder();
+        $this->verifier->method('verify')->willReturn('PAYMENT_CANCELLED');
+        $this->orderHelper->expects($this->never())->method('setAsPaid');
+        $this->orderHelper->expects($this->never())->method('setAsFailed');
+
+        $this->fire($this->forged);
+    }
+
+    public function testOrderThatDisappearsWhileVerifyingIsIgnored()
+    {
+        $this->twoLoads($this->orderInState(Order::STATE_NEW), null);
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->expects($this->never())->method('setAsPaid');
+
+        $this->fire($this->forged);
+    }
+
+    public function testNoSecondLoadWhenMayaDoesNotConfirm()
+    {
+        $this->pendingOrder();
+        $this->verifier->method('verify')->willReturn(null);
+        $this->orderHelper->expects($this->once())->method('loadOrderByIncrementId');
+
+        $this->fire($this->forged);
+    }
+
+    public function testLoadsTheOrderWithThePaymentIdSoCollidingIncrementIdsCanBeTold()
+    {
+        $this->orderHelper->expects($this->once())->method('loadOrderByIncrementId')->with('000000042', 'x1234567')->willReturn(null);
+
+        $this->fire($this->forged);
+    }
+
     public function testUnknownOrderIsIgnored()
     {
         $this->orderHelper->method('loadOrderByIncrementId')->willReturn(null);

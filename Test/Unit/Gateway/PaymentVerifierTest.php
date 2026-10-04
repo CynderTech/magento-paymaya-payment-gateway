@@ -145,9 +145,10 @@ class PaymentVerifierTest extends TestCase
 
     public function testNonStringStoredCheckoutIdsNeverMatch()
     {
-        $this->client->method('retrievePayment')->willReturn($this->mayaPayment(['status' => 'PAYMENT_FAILED', 'id' => '123']));
-        $order = $this->order('paymaya_payment', 1500.50, 'PHP', [123, null, ['123']]);
-        $this->assertNull($this->verifier->verify($order, '123'));
+        $id = '12345678';
+        $this->client->method('retrievePayment')->willReturn($this->mayaPayment(['status' => 'PAYMENT_FAILED', 'id' => $id]));
+        $order = $this->order('paymaya_payment', 1500.50, 'PHP', [12345678, null, [$id]]);
+        $this->assertNull($this->verifier->verify($order, $id));
     }
 
     public function testAcceptedSuccessFromAnotherCheckoutIsLoggedAsWarning()

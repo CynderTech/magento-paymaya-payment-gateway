@@ -36,27 +36,52 @@ class PaymentWebhookObserver implements \Magento\Framework\Event\ObserverInterfa
         }
 
         // Both values come from an unauthenticated request: keep them log-safe.
-        $safePayment = self::loggable($refNumber);
-        $safeOrder = self::loggable($orderId);
+        $safePayment = \PayMaya\Payment\Gateway\Order::loggable($refNumber);
+        $safeOrder = \PayMaya\Payment\Gateway\Order::loggable($orderId);
 
         $this->logger->info("[Handle Webhook] Payment {$safePayment} for order {$safeOrder}");
 
-        $order = $this->orderHelper->loadOrderByIncrementId($orderId);
+        $order = $this->orderHelper->loadOrderByIncrementId($orderId, $refNumber);
 
         if (!$order) {
             $this->logger->warning("[Handle Webhook] Ignored: order {$safeOrder} not found");
             return;
         }
 
-        // A canceled order stays eligible so that a genuine success after an earlier failed
-        // attempt in the same checkout is not lost; it is only ever revived by a verified success.
-        $state = $order->getState();
-        if (!in_array($state, [MagentoOrder::STATE_NEW, MagentoOrder::STATE_PENDING_PAYMENT, MagentoOrder::STATE_CANCELED], true)) {
-            $this->logger->debug("[Handle Webhook] Order {$safeOrder} is not awaiting payment (state {$state}).");
+        // Cheap gate so that orders that are already settled cost no call to Maya.
+        if (!self::awaitsPayment($order->getState())) {
+            $this->logger->debug("[Handle Webhook] Order {$safeOrder} is not awaiting payment (state {$order->getState()}).");
             return;
         }
 
         $status = $this->verifier->verify($order, $refNumber);
+
+        if ($status === null) {
+            return;
+        }
+
+        // The call to Maya is slow: an admin may have canceled the order or another request may have
+        // settled it meanwhile. Decide on, and save, a freshly loaded order, never on the stale one.
+        $verified = $order;
+        $order = $this->orderHelper->loadOrderByIncrementId($orderId, $refNumber);
+
+        if (!$order) {
+            $this->logger->warning("[Handle Webhook] Ignored: order {$safeOrder} disappeared while verifying");
+            return;
+        }
+
+        if ($order->getId() !== $verified->getId()) {
+            $this->logger->warning("[Handle Webhook] Ignored: order {$safeOrder} is not the order that was verified");
+            return;
+        }
+
+        // A canceled order stays eligible so that a genuine success after an earlier failed
+        // attempt in the same checkout is not lost; it is only ever revived by a verified success.
+        $state = $order->getState();
+        if (!self::awaitsPayment($state)) {
+            $this->logger->debug("[Handle Webhook] Order {$safeOrder} is no longer awaiting payment (state {$state}).");
+            return;
+        }
 
         if ($state === MagentoOrder::STATE_CANCELED) {
             if ($status !== PaymentVerifier::STATUS_SUCCESS) {
@@ -86,9 +111,14 @@ class PaymentWebhookObserver implements \Magento\Framework\Event\ObserverInterfa
         if ($status === PaymentVerifier::STATUS_SUCCESS) {
             $this->orderHelper->createTransaction($order, $refNumber);
             $this->orderHelper->setAsPaid($order);
-        } else if ($status !== null) {
+        } elseif (in_array($status, PaymentVerifier::FAILURE_STATUSES, true)) {
             $this->orderHelper->setAsFailed($order, $refNumber);
         }
+    }
+
+    private static function awaitsPayment($state)
+    {
+        return in_array($state, [MagentoOrder::STATE_NEW, MagentoOrder::STATE_PENDING_PAYMENT, MagentoOrder::STATE_CANCELED], true);
     }
 
     private static function hasReleasedItems($order)
@@ -100,10 +130,5 @@ class PaymentWebhookObserver implements \Magento\Framework\Event\ObserverInterfa
         }
 
         return false;
-    }
-
-    private static function loggable($value)
-    {
-        return substr(preg_replace('/[^A-Za-z0-9._-]/', '?', $value), 0, 64);
     }
 }
