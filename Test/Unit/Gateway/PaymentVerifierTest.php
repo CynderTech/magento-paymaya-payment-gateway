@@ -59,13 +59,25 @@ class PaymentVerifierTest extends TestCase
         $this->assertSame('PAYMENT_SUCCESS', $this->verifier->verify($this->order(), self::PAYMENT_ID));
     }
 
-    public function testAcceptsNumericAmountAndFailureStatuses()
+    public function testAcceptsNumericAmountAndFailureStatusesOfAStoredCheckout()
     {
         foreach (['PAYMENT_FAILED', 'PAYMENT_EXPIRED'] as $status) {
             $client = $this->createMock(PayMayaClient::class);
             $client->method('retrievePayment')->willReturn($this->mayaPayment(['status' => $status, 'amount' => 1500.5]));
             $verifier = new PaymentVerifier($client, $this->createMock(Logger::class));
-            $this->assertSame($status, $verifier->verify($this->order(), self::PAYMENT_ID));
+            $order = $this->order('paymaya_payment', 1500.50, 'PHP', [self::PAYMENT_ID]);
+            $this->assertSame($status, $verifier->verify($order, self::PAYMENT_ID));
+        }
+    }
+
+    #[DataProvider('failureStatuses')]
+    public function testFailureIsIgnoredWhenTheOrderHasNoStoredCheckoutIds($status)
+    {
+        // An order placed before upgrading, or one whose checkout ID could not be saved: a failure
+        // notice must not cancel it, even when reference, amount and currency all match.
+        $this->client->method('retrievePayment')->willReturn($this->mayaPayment(['status' => $status]));
+        foreach ([null, []] as $stored) {
+            $this->assertNull($this->verifier->verify($this->order('paymaya_payment', 1500.50, 'PHP', $stored), self::PAYMENT_ID));
         }
     }
 
@@ -129,6 +141,24 @@ class PaymentVerifierTest extends TestCase
     public static function failureStatuses(): array
     {
         return ['failed' => ['PAYMENT_FAILED'], 'expired' => ['PAYMENT_EXPIRED']];
+    }
+
+    public function testNonStringStoredCheckoutIdsNeverMatch()
+    {
+        $this->client->method('retrievePayment')->willReturn($this->mayaPayment(['status' => 'PAYMENT_FAILED', 'id' => '123']));
+        $order = $this->order('paymaya_payment', 1500.50, 'PHP', [123, null, ['123']]);
+        $this->assertNull($this->verifier->verify($order, '123'));
+    }
+
+    public function testAcceptedSuccessFromAnotherCheckoutIsLoggedAsWarning()
+    {
+        $logger = $this->createMock(Logger::class);
+        $logger->expects($this->once())->method('warning')->with($this->stringContains('accepting a confirmed payment'));
+        $client = $this->createMock(PayMayaClient::class);
+        $client->method('retrievePayment')->willReturn($this->mayaPayment());
+        $order = $this->order('paymaya_payment', 1500.50, 'PHP', ['bbbbbbbb-575e-4472-91c8-19ce9dd3dc1e']);
+
+        $this->assertSame('PAYMENT_SUCCESS', (new PaymentVerifier($client, $logger))->verify($order, self::PAYMENT_ID));
     }
 
     public function testConfirmedSuccessFromAnotherCheckoutIsStillAccepted()

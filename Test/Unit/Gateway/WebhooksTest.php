@@ -29,11 +29,21 @@ class WebhooksTest extends TestCase
 
     public function testAnswers400AndDispatchesNothingForABodyThatIsNotAJsonObject()
     {
-        foreach (['', 'nope', '"text"', 'null', '123'] as $body) {
+        foreach (['', 'nope', '"text"', 'null', '123', '[]', '{}', '[{"id":"abc"}]', '["a","b"]', '{"0":"a"}'] as $body) {
             $events = $this->createMock(ManagerInterface::class);
             $events->expects($this->never())->method('dispatch');
 
             $this->assertSame(400, $this->webhooks($body, $events)->dispatchEvent('some_event'), "body: $body");
+        }
+    }
+
+    public function testAcceptsObjectsWhateverTheirKeys()
+    {
+        foreach (['{"id":"abc"}', '{"1":"a"}', '{"id":"abc","list":[1,2]}'] as $body) {
+            $events = $this->createMock(ManagerInterface::class);
+            $events->expects($this->once())->method('dispatch');
+
+            $this->assertSame(200, $this->webhooks($body, $events)->dispatchEvent('some_event'), "body: $body");
         }
     }
 

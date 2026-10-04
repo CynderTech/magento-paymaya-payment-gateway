@@ -35,7 +35,7 @@ class Webhooks
             // Retrieve the request's body and parse it as JSON
             $payload = json_decode($this->request->getContent(), true);
 
-            if (!is_array($payload))
+            if (!self::isJsonObject($payload))
             {
                 $this->logger->warning('[Handle Webhook] Rejected ' . $eventType . ': body is not a JSON object');
                 return 400;
@@ -56,6 +56,23 @@ class Webhooks
             $this->logger->error('[Handle Webhook] ' . $e->getMessage());
             return 500;
         }
+    }
+
+    // A decoded JSON object is an associative array; a list such as [{"id":"x"}] is not an event
+    private static function isJsonObject($payload)
+    {
+        if (!is_array($payload) || $payload === []) {
+            return false;
+        }
+
+        $expected = 0;
+        foreach ($payload as $key => $_) {
+            if ($key !== $expected++) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // When multiple events arrive at the same time, lock the current process so that we don't get DB deadlocks

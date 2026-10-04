@@ -94,11 +94,13 @@ class PaymentVerifier
 
         // For card checkouts the payment ID is the ID of a checkout we created (an order can have
         // several, as the buyer may reopen the payment page). A payment from some other checkout,
-        // for example one made with our public key, must not cancel the order. It is only refused
-        // for failure notices: a confirmed, fully matching success is money received for this very
-        // order, and the binding is not verified for every payment method, so it must never block it.
+        // for example one made with our public key, must not cancel the order, and neither must a
+        // notice we cannot tie to a checkout at all (an order placed before the IDs were stored, or
+        // storing them failed): leaving an order pending is safe, canceling on an unverifiable
+        // notice is not. A confirmed, fully matching success is always accepted: it is money
+        // received for this very order, and the binding is not verified for every payment method.
         $checkoutIds = self::checkoutIds($payment);
-        if ($checkoutIds && !in_array($paymentId, $checkoutIds, true)) {
+        if (!in_array($paymentId, $checkoutIds, true)) {
             if ($status !== self::STATUS_SUCCESS) {
                 return $this->reject($incrementId, 'failure notice for a payment that is not from a checkout created for this order');
             }
