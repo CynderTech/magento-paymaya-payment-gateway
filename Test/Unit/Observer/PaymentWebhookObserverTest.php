@@ -4,6 +4,8 @@ namespace PayMaya\Payment\Test\Unit\Observer;
 
 use Magento\Framework\Event\Observer;
 use Magento\Sales\Model\Order;
+use Magento\Sales\Model\Order\Item;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PayMaya\Payment\Gateway\Order as OrderHelper;
 use PayMaya\Payment\Gateway\PaymentVerifier;
@@ -14,13 +16,15 @@ class PaymentWebhookObserverTest extends TestCase
 {
     private $orderHelper;
     private $verifier;
+    private $logger;
     private $observer;
 
     protected function setUp(): void
     {
         $this->orderHelper = $this->createMock(OrderHelper::class);
         $this->verifier = $this->createMock(PaymentVerifier::class);
-        $this->observer = new PaymentWebhookObserver($this->orderHelper, $this->verifier, $this->createMock(Logger::class));
+        $this->logger = $this->createMock(Logger::class);
+        $this->observer = new PaymentWebhookObserver($this->orderHelper, $this->verifier, $this->logger);
     }
 
     private function fire(array $body)
@@ -28,10 +32,11 @@ class PaymentWebhookObserverTest extends TestCase
         $this->observer->execute(new Observer(['data' => $body]));
     }
 
-    private function pendingOrder($state = Order::STATE_NEW)
+    private function pendingOrder($state = Order::STATE_NEW, array $items = [])
     {
         $order = $this->createMock(Order::class);
         $order->method('getState')->willReturn($state);
+        $order->method('getAllItems')->willReturn($items);
         $this->orderHelper->method('loadOrderByIncrementId')->willReturn($order);
 
         return $order;
@@ -96,6 +101,85 @@ class PaymentWebhookObserverTest extends TestCase
         $this->fire($this->forged);
     }
 
+    public function testOrderCanceledProperlyInMagentoIsNotReopenedButTheMerchantIsTold()
+    {
+        // qty_canceled > 0: Magento released the items, so paying the order would oversell.
+        $released = $this->createStub(Item::class);
+        $released->method('getQtyCanceled')->willReturn(1.0);
+        $order = $this->pendingOrder(Order::STATE_CANCELED, [$released]);
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->method('hasComment')->willReturn(false);
+        $this->orderHelper->expects($this->never())->method('setAsPaid');
+        $this->orderHelper->expects($this->never())->method('createTransaction');
+        $this->orderHelper->expects($this->once())->method('addComment')->with($order, $this->stringContains('x1234567'));
+        $this->logger->expects($this->once())->method('critical');
+
+        $this->fire($this->forged);
+    }
+
+    public function testRedeliveredWebhookDoesNotNoteOrAlertAgain()
+    {
+        $released = $this->createStub(Item::class);
+        $released->method('getQtyCanceled')->willReturn(1.0);
+        $this->pendingOrder(Order::STATE_CANCELED, [$released]);
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->method('hasComment')->willReturn(true);
+        $this->orderHelper->expects($this->never())->method('addComment');
+        $this->orderHelper->expects($this->never())->method('setAsPaid');
+        $this->logger->expects($this->never())->method('critical');
+
+        $this->fire($this->forged);
+    }
+
+    #[DataProvider('partlyReleasedItems')]
+    public function testAnyReleasedItemKeepsTheOrderClosed(array $quantities)
+    {
+        $items = array_map(function ($qty) {
+            $item = $this->createStub(Item::class);
+            $item->method('getQtyCanceled')->willReturn($qty);
+            return $item;
+        }, $quantities);
+        $this->pendingOrder(Order::STATE_CANCELED, $items);
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->method('hasComment')->willReturn(false);
+        $this->orderHelper->expects($this->never())->method('setAsPaid');
+        $this->orderHelper->expects($this->once())->method('addComment');
+
+        $this->fire($this->forged);
+    }
+
+    public static function partlyReleasedItems(): array
+    {
+        return ['second item released' => [[0.0, 2.0]], 'string quantity' => [['1.0000']], 'parent and child' => [[1.0, 1.0]]];
+    }
+
+    public function testNullOrZeroQtyCanceledDoesNotCountAsReleased()
+    {
+        $items = [];
+        foreach ([null, 0, '0.0000'] as $qty) {
+            $item = $this->createStub(Item::class);
+            $item->method('getQtyCanceled')->willReturn($qty);
+            $items[] = $item;
+        }
+        $order = $this->pendingOrder(Order::STATE_CANCELED, $items);
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->expects($this->once())->method('setAsPaid')->with($order);
+
+        $this->fire($this->forged);
+    }
+
+    public function testStateOnlyCancelWithUntouchedItemsIsStillRevivedByAVerifiedSuccess()
+    {
+        $untouched = $this->createStub(Item::class);
+        $untouched->method('getQtyCanceled')->willReturn(0.0);
+        $order = $this->pendingOrder(Order::STATE_CANCELED, [$untouched]);
+        $this->verifier->method('verify')->willReturn('PAYMENT_SUCCESS');
+        $this->orderHelper->expects($this->once())->method('setAsPaid')->with($order);
+        $this->orderHelper->expects($this->never())->method('addComment');
+
+        $this->fire($this->forged);
+    }
+
     public function testCanceledOrderIsNotTouchedByFailureOrUnverifiedNotifications()
     {
         foreach ([null, 'PAYMENT_FAILED', 'PAYMENT_EXPIRED'] as $verified) {
@@ -103,6 +187,7 @@ class PaymentWebhookObserverTest extends TestCase
             $verifier = $this->createMock(PaymentVerifier::class);
             $order = $this->createMock(Order::class);
             $order->method('getState')->willReturn(Order::STATE_CANCELED);
+            $order->method('getAllItems')->willReturn([]);
             $helper->method('loadOrderByIncrementId')->willReturn($order);
             $verifier->method('verify')->willReturn($verified);
             $helper->expects($this->never())->method('setAsPaid');

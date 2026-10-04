@@ -63,6 +63,23 @@ class PaymentWebhookObserver implements \Magento\Framework\Event\ObserverInterfa
                 return;
             }
 
+            // setAsFailed only flips the state, so the items of such an order were never released and
+            // paying it is consistent. An order canceled properly in Magento (items released, stock and
+            // rules reverted) cannot be reopened safely: leave it for the merchant to fulfil or refund.
+            if (self::hasReleasedItems($order)) {
+                // Maya may deliver the same webhook several times: note it once.
+                $note = "Maya confirmed payment {$refNumber} after this order was canceled and its items released. The order was not reopened: fulfil or refund it manually.";
+
+                if ($this->orderHelper->hasComment($order, $note)) {
+                    $this->logger->debug("[Handle Webhook] Order {$safeOrder} already flagged for payment {$safePayment}.");
+                    return;
+                }
+
+                $this->logger->critical("[Handle Webhook] Order {$safeOrder} was canceled in Magento but Maya confirms payment {$safePayment}; not reopening it, reconcile or refund manually.");
+                $this->orderHelper->addComment($order, $note);
+                return;
+            }
+
             $this->logger->warning("[Handle Webhook] Order {$safeOrder} was canceled but Maya confirms payment {$safePayment}; marking it paid.");
         }
 
@@ -72,6 +89,17 @@ class PaymentWebhookObserver implements \Magento\Framework\Event\ObserverInterfa
         } else if ($status !== null) {
             $this->orderHelper->setAsFailed($order, $refNumber);
         }
+    }
+
+    private static function hasReleasedItems($order)
+    {
+        foreach ($order->getAllItems() as $item) {
+            if ((float) $item->getQtyCanceled() > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function loggable($value)

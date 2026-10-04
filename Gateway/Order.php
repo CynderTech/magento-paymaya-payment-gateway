@@ -39,6 +39,28 @@ class Order
     }
 
     /**
+     * Whether the order history already holds exactly this comment
+     */
+    public function hasComment($order, $comment)
+    {
+        foreach ($order->getStatusHistoryCollection() as $history) {
+            if ($history->getComment() === $comment) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Leave a merchant-only note on the order. Only the history row is saved, not the order.
+     */
+    public function addComment($order, $comment)
+    {
+        $order->addCommentToStatusHistory($comment)->save();
+    }
+
+    /**
      * Create transaction records for the order with a Maya payment ID
      */
     public function createTransaction($order, $paymentId)
