@@ -22,6 +22,23 @@ class Order
     }
 
     /**
+     * Whether a Maya checkout may be created for this order: it exists, was placed with Maya and is
+     * still awaiting payment. A canceled or settled order must never get a new checkout.
+     */
+    public static function awaitsMayaPayment($order)
+    {
+        if (!$order || !$order->getId()) {
+            return false;
+        }
+
+        $payment = $order->getPayment();
+
+        return $payment
+            && $payment->getMethod() === PaymentVerifier::METHOD_CODE
+            && in_array($order->getState(), [MagentoOrder::STATE_NEW, MagentoOrder::STATE_PENDING_PAYMENT], true);
+    }
+
+    /**
      * Make a value taken from an unauthenticated request safe to log
      */
     public static function loggable($value)

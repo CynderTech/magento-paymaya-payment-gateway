@@ -30,6 +30,15 @@ class Index extends \Magento\Framework\App\Action\Action
         $order = $this->_objectManager->create(\Magento\Sales\Model\Order::class);
         $order->loadByIncrementId($incrementId);
 
+        // This is reached by a plain GET redirect after the order is placed, so it must only ever act on
+        // an order of this session that is still waiting for its Maya payment: a reload after paying, a
+        // canceled order or someone else's request must not create another checkout.
+        if (!\PayMaya\Payment\Gateway\Order::awaitsMayaPayment($order)) {
+            $this->logger->info('[Create Checkout] No order awaiting a Maya payment in this session; no checkout created');
+            $this->_redirect('checkout/cart');
+            return;
+        }
+
         try {
             $response = $this->client->createCheckout($order);
             $checkout = json_decode($response, true);
