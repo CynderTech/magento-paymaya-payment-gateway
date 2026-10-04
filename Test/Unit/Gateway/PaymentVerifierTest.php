@@ -253,6 +253,13 @@ class PaymentVerifierTest extends TestCase
         $this->assertNull($this->verifier->verify($this->order('paymaya_payment', 1000.00), self::PAYMENT_ID));
     }
 
+    public function testThrowsSoMayaRetriesWhenMayaAnswersWithSomethingUnexpected()
+    {
+        $this->client->method('retrievePayment')->willThrowException(new \UnexpectedValueException('not a JSON object'));
+        $this->expectException(\RuntimeException::class);
+        $this->verifier->verify($this->order(), self::PAYMENT_ID);
+    }
+
     public function testThrowsSoMayaRetriesWhenApiIsUnreachable()
     {
         $this->client->method('retrievePayment')->willThrowException(

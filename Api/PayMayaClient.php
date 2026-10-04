@@ -78,14 +78,16 @@ class PayMayaClient
      * the body is not a JSON object.
      */
     public function retrievePayment($paymentId) {
-        if (!is_string($paymentId) || !preg_match('/^[A-Za-z0-9-]{8,64}$/', $paymentId)) {
+        if (!is_string($paymentId) || !preg_match('/^[A-Za-z0-9-]{8,64}$/D', $paymentId)) {
             throw new \InvalidArgumentException('Invalid Maya payment ID');
         }
 
         $response = $this->client->get('/payments/v1/payments/' . $paymentId, ['timeout' => 15]);
         $payment = json_decode((string) $response->getBody(), true);
 
-        if (!is_array($payment)) {
+        // A payment is a JSON object. Anything else (a list, a scalar, nothing) is an unexpected answer
+        // that must make the webhook fail with a 500 so that Maya retries, not be judged as a mismatch.
+        if (!is_array($payment) || $payment === [] || array_keys($payment) === range(0, count($payment) - 1)) {
             throw new \UnexpectedValueException('Maya payment response is not a JSON object');
         }
 
