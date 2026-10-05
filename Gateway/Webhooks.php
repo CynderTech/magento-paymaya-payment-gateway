@@ -4,8 +4,8 @@ namespace PayMaya\Payment\Gateway;
 
 class Webhooks
 {
-    const PAYMENT_SUCCESS = 'paymaya_payment_success_webhook';
-    const PAYMENT_FAILED = 'paymaya_payment_failed_webhook';
+    public const PAYMENT_SUCCESS = 'paymaya_payment_success_webhook';
+    public const PAYMENT_FAILED = 'paymaya_payment_failed_webhook';
 
     protected $cache;
     protected $logger;

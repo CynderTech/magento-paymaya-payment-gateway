@@ -2,8 +2,11 @@
 
 namespace PayMaya\Payment\Test\Unit\Gateway;
 
+use Magento\Sales\Api\OrderPaymentRepositoryInterface;
+use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Sales\Model\Order as MagentoOrder;
 use Magento\Sales\Model\Order\Payment;
+use Magento\Sales\Model\Order\Payment\Transaction;
 use Magento\Sales\Model\Order\Status\History;
 use Magento\Sales\Model\ResourceModel\Order\Collection;
 use Magento\Sales\Model\ResourceModel\Order\CollectionFactory;
@@ -18,6 +21,9 @@ class OrderTest extends TestCase
 {
     private $collection;
     private $logger;
+    private $orderRepository;
+    private $paymentRepository;
+    private $sender;
 
     private function helper(array $found = [])
     {
@@ -29,8 +35,11 @@ class OrderTest extends TestCase
         $factory->method('create')->willReturn($this->collection);
 
         $this->logger = $this->createMock(Logger::class);
+        $this->sender = $this->createMock(OrderSender::class);
+        $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
+        $this->paymentRepository = $this->createMock(OrderPaymentRepositoryInterface::class);
 
-        return new Order($this->createStub(OrderSender::class), $factory, $this->logger);
+        return new Order($this->sender, $factory, $this->logger, $this->orderRepository, $this->paymentRepository);
     }
 
     private function orderWithCheckouts($checkoutIds)
@@ -70,16 +79,104 @@ class OrderTest extends TestCase
         $this->assertFalse($this->helper()->hasComment($this->orderWithHistory([]), 'anything'));
     }
 
-    public function testAddCommentSavesOnlyTheHistoryRow()
+    public function testAddCommentSavesTheOrderThroughTheRepository()
     {
-        $history = $this->createMock(History::class);
-        $history->expects($this->once())->method('save');
+        $helper = $this->helper();
+        $order = $this->createMock(MagentoOrder::class);
+        $order->expects($this->once())->method('addCommentToStatusHistory')->with('a note');
+        $order->expects($this->never())->method('save');
+        $this->orderRepository->expects($this->once())->method('save')->with($order);
+
+        $helper->addComment($order, 'a note');
+    }
+
+    public function testSetAsPaidMovesTheOrderToProcessingSavesOnceAndSendsTheEmail()
+    {
+        $helper = $this->helper();
+        $order = $this->createMock(MagentoOrder::class);
+        $order->expects($this->once())->method('setState')->with(MagentoOrder::STATE_PROCESSING);
+        $order->expects($this->once())->method('setStatus')->with(MagentoOrder::STATE_PROCESSING);
+        $order->expects($this->never())->method('save');
+        $this->orderRepository->expects($this->once())->method('save')->with($order);
+        $this->sender->expects($this->once())->method('sendMayaConfirmation')->with($order);
+
+        $helper->setAsPaid($order);
+    }
+
+    public function testSetAsFailedCancelsTheOrderWithAFailedPaymentComment()
+    {
+        $helper = $this->helper();
+        $order = $this->createMock(MagentoOrder::class);
+        $order->method('getStatus')->willReturn('canceled');
+        $order->expects($this->once())->method('setState')->with(MagentoOrder::STATE_CANCELED);
+        $order->expects($this->once())->method('setStatus')->with(MagentoOrder::STATE_CANCELED);
+        $order->expects($this->once())->method('addCommentToStatusHistory')->with('Failed payment pay-1', 'canceled', true);
+        $this->orderRepository->expects($this->once())->method('save')->with($order);
+
+        $helper->setAsFailed($order, 'pay-1');
+    }
+
+    public function testSetAsFailedWithoutAPaymentIdSaysUnknown()
+    {
+        $helper = $this->helper();
+        $order = $this->createMock(MagentoOrder::class);
+        $order->expects($this->once())->method('addCommentToStatusHistory')->with('Failed payment Unknown');
+
+        $helper->setAsFailed($order, null);
+    }
+
+    #[DataProvider('emptyPaymentIds')]
+    public function testCreateTransactionRefusesAnEmptyPaymentIdAndSavesNothing($paymentId)
+    {
+        $helper = $this->helper();
+        $order = $this->createMock(MagentoOrder::class);
+        $order->expects($this->never())->method('getPayment');
+        $this->paymentRepository->expects($this->never())->method('save');
+        $this->orderRepository->expects($this->never())->method('save');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $helper->createTransaction($order, $paymentId);
+    }
+
+    public static function emptyPaymentIds(): array
+    {
+        return ['empty string' => [''], 'null' => [null], 'zero' => [0]];
+    }
+
+    public function testCreateTransactionSavesThePaymentThenTheOrderThenTheTransaction()
+    {
+        $helper = $this->helper();
+        $calls = [];
+
+        $transaction = $this->createMock(Transaction::class);
+        $transaction->method('save')->willReturnCallback(function () use (&$calls, $transaction) {
+            $calls[] = 'transaction';
+            return $transaction;
+        });
+
+        $payment = $this->createMock(Payment::class);
+        $payment->expects($this->once())->method('setTransactionId')->with('pay-1');
+        $payment->method('addTransaction')->willReturnCallback(function () use (&$calls, $transaction) {
+            $calls[] = 'addTransaction';
+            return $transaction;
+        });
 
         $order = $this->createMock(MagentoOrder::class);
-        $order->expects($this->once())->method('addCommentToStatusHistory')->with('a note')->willReturn($history);
-        $order->expects($this->never())->method('save');
+        $order->method('getPayment')->willReturn($payment);
 
-        $this->helper()->addComment($order, 'a note');
+        $this->paymentRepository->method('save')->willReturnCallback(function () use (&$calls, $payment) {
+            $calls[] = 'payment';
+            return $payment;
+        });
+        $this->orderRepository->method('save')->willReturnCallback(function () use (&$calls, $order) {
+            $calls[] = 'order';
+            return $order;
+        });
+
+        $helper->createTransaction($order, 'pay-1');
+
+        // The order is saved before the standalone transaction so that no orphan transaction is left.
+        $this->assertSame(['payment', 'addTransaction', 'order', 'transaction'], $calls);
     }
 
     public function testSearchesByIncrementId()

@@ -5,16 +5,50 @@ namespace PayMaya\Payment\Api;
 use GuzzleHttp\Client as GC;
 use GuzzleHttp\Exception\ClientException;
 
+/**
+ * Class PayMayaClient
+ * Handles API communication with PayMaya endpoints.
+ */
 class PayMayaClient
 {
-    const SANDBOX_BASE_URL = 'https://pg-sandbox.paymaya.com';
-    const PRODUCTION_BASE_URL = 'https://pg.paymaya.com';
+    /**
+     * Sandbox API URL
+     */
+    public const SANDBOX_BASE_URL = 'https://pg-sandbox.paymaya.com';
 
+    /**
+     * Production API URL
+     */
+    public const PRODUCTION_BASE_URL = 'https://pg.paymaya.com';
+
+    /**
+     * @var GC
+     */
     protected $client;
+
+    /**
+     * @var \PayMaya\Payment\Model\Config
+     */
     protected $config;
+
+    /**
+     * @var \PayMaya\Payment\Logger\Logger
+     */
     protected $logger;
+
+    /**
+     * @var \Magento\Store\Model\StoreManagerInterface
+     */
     protected $storeManager;
 
+    /**
+     * PayMayaClient constructor.
+     *
+     * @param \PayMaya\Payment\Model\Config $config
+     * @param \Magento\Framework\Encryption\EncryptorInterface $encryptor
+     * @param \Magento\Store\Model\StoreManagerInterface $storeManager
+     * @param \PayMaya\Payment\Logger\Logger $logger
+     */
     public function __construct(
         \PayMaya\Payment\Model\Config $config,
         \Magento\Framework\Encryption\EncryptorInterface $encryptor,
@@ -39,7 +73,14 @@ class PayMayaClient
         $this->client = $client;
     }
 
-    public function retrieveWebhooks() {
+    /**
+     * Retrieve registered webhooks
+     *
+     * @return \Psr\Http\Message\StreamInterface|string
+     * @throws ClientException
+     */
+    public function retrieveWebhooks()
+    {
         try {
             $response = $this->client->get('/checkout/v1/webhooks');
             return $response->getBody();
@@ -55,17 +96,32 @@ class PayMayaClient
         }
     }
 
-    public function deleteWebhook($id) {
+    /**
+     * Delete a specific webhook by ID
+     *
+     * @param string $id
+     * @return \Psr\Http\Message\StreamInterface
+     */
+    public function deleteWebhook($id)
+    {
         $response = $this->client->delete("/checkout/v1/webhooks/{$id}");
         return $response->getBody();
     }
 
-    public function createWebhook($type, $url) {
+    /**
+     * Create a new webhook
+     *
+     * @param string $type
+     * @param string $url
+     * @return \Psr\Http\Message\StreamInterface
+     */
+    public function createWebhook($type, $url)
+    {
         $response = $this->client->post('/checkout/v1/webhooks', [
-            'json' => array(
+            'json' => [
                 'name' => $type,
                 'callbackUrl' => $url
-            ),
+            ],
         ]);
 
         return $response->getBody();
@@ -77,7 +133,8 @@ class PayMayaClient
      * non-2xx responses or connection errors, and \UnexpectedValueException when
      * the body is not a JSON object.
      */
-    public function retrievePayment($paymentId) {
+    public function retrievePayment($paymentId)
+    {
         if (!is_string($paymentId) || !preg_match('/^[A-Za-z0-9-]{8,64}$/D', $paymentId)) {
             throw new \InvalidArgumentException('Invalid Maya payment ID');
         }
@@ -94,7 +151,14 @@ class PayMayaClient
         return $payment;
     }
 
-    public function createCheckout($order) {
+    /**
+     * Create a checkout session
+     *
+     * @param \Magento\Sales\Model\Order $order
+     * @return \Psr\Http\Message\StreamInterface
+     */
+    public function createCheckout($order)
+    {
         $mode = $this->config->getConfigData('paymaya_mode', 'basic');
         $publicKey = $this->config->getConfigData("paymaya_{$mode}_pk", 'basic');
 
@@ -113,39 +177,74 @@ class PayMayaClient
         return $response->getBody();
     }
 
-    private function getAuthHeader($secretKey) {
+    /**
+     * Get authorization header string
+     *
+     * @param string $secretKey
+     * @return string
+     */
+    private function getAuthHeader($secretKey)
+    {
         return "Basic " . base64_encode($secretKey . ':');
     }
 
-    private function formatBirthdate($rawBirthDate) {
-        if (!isset($rawBirthDate)) return '';
+    /**
+     * Format birthdate for PayMaya API
+     *
+     * @param string|null $rawBirthDate
+     * @return string
+     */
+    private function formatBirthdate($rawBirthDate)
+    {
+        if (!isset($rawBirthDate)) {
+            return '';
+        }
 
         $time = strtotime($rawBirthDate);
         return date('Y-m-d', $time);
     }
 
-    private function formatGender($rawGender) {
+    /**
+     * Format gender for PayMaya API
+     *
+     * @param int|string $rawGender
+     * @return string
+     */
+    private function formatGender($rawGender)
+    {
         switch ($rawGender) {
             // Mapping out Unspecified option in Magento to Male in Maya by default
             case 0:
-            case 1: {
+            case 1:
                 return 'M';
-            }
-            case 2: {
+            case 2:
                 return 'F';
-            }
+            default:
+                // Log unexpected gender values before silently coercing to prevent untraceable misgendering
+                $this->logger->warning(
+                    sprintf(
+                        '[PayMaya] Unmapped gender value "%s"; defaulting to M',
+                        (string)$rawGender
+                    )
+                );
+                return 'M';
         }
     }
 
+    /**
+     * Format Magento order into PayMaya payload
+     *
+     * @param \Magento\Sales\Model\Order $order
+     * @return array
+     */
     private function formatOrderForPayment(\Magento\Sales\Model\Order $order)
     {
         $baseUrl = $this->storeManager->getStore()->getBaseUrl();
 
         $orderItems = [];
 
-        foreach($order->getAllItems() as $item)
-        {
-            array_push($orderItems, [
+        foreach ($order->getAllVisibleItems() as $item) {
+            $orderItems[] = [
                 "name" => $item->getName(),
                 "quantity" => $item->getQtyOrdered(),
                 "description" => empty($item->getDescription()) ? $item->getName() : $item->getDescription(),
@@ -156,13 +255,19 @@ class PayMayaClient
                 "totalAmount" => [
                     "value" => $item->getQtyOrdered() * $item->getPrice()
                 ]
-            ]);
+            ];
         }
 
         $shippingAddress = $order->getShippingAddress();
         $billingAddress = $order->getBillingAddress();
 
         $addressGetter = isset($shippingAddress) ? $shippingAddress : $billingAddress;
+        
+        $street = $addressGetter->getStreet() ?: [];
+        $streetArray = is_array($street) ? $street : [$street];
+        $line1 = $streetArray[0] ?? '';
+        $line2 = $streetArray[1] ?? '';
+
         $rawBirthDate = $order->getCustomerDob();
         $rawGender = $order->getCustomerGender();
 
@@ -170,7 +275,7 @@ class PayMayaClient
             "firstName" => $order->getCustomerFirstname(),
             "middleName" => $order->getCustomerMiddlename(),
             "lastName" => $order->getCustomerLastname(),
-            "birthday"=> $this->formatBirthdate($rawBirthDate),
+            "birthday" => $this->formatBirthdate($rawBirthDate),
             "sex" => $this->formatGender($rawGender),
             "contact" => [
                 "phone" => $addressGetter->getTelephone(),
@@ -182,8 +287,8 @@ class PayMayaClient
                 "lastName" => $order->getCustomerLastname(),
                 "phone" => $addressGetter->getTelephone(),
                 "email" => $order->getCustomerEmail(),
-                "line1" => $addressGetter->getStreet(1)[0],
-                "line2" => $addressGetter->getStreet(2)[0],
+                "line1" => $line1,
+                "line2" => $line2,
                 "city" => $addressGetter->getCity(),
                 "state" => $addressGetter->getRegionCode(),
                 "zipCode" => $addressGetter->getPostCode(),
@@ -191,8 +296,8 @@ class PayMayaClient
                 "shippingType" => "ST" // ST - for standard, SD - for same day
             ],
             "billingAddress" => [
-                "line1" => $addressGetter->getStreet(1)[0],
-                "line2" => $addressGetter->getStreet(2)[0],
+                "line1" => $line1,
+                "line2" => $line2,
                 "city" => $addressGetter->getCity(),
                 "state" => $addressGetter->getRegionCode(),
                 "zipCode" => $addressGetter->getPostCode(),
@@ -213,7 +318,7 @@ class PayMayaClient
                 ]
             ],
             "buyer" => $buyerData,
-            "items"=> $orderItems,
+            "items" => $orderItems,
             "redirectUrl" => [
                 "success" => "{$baseUrl}paymaya/checkout/catcher?type=success",
                 "failure" => "{$baseUrl}paymaya/checkout/catcher?type=fail",

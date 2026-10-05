@@ -9,16 +9,22 @@ class Order
 {
     protected $logger;
     protected $orderCollectionFactory;
+    protected $orderRepository;
     protected $orderSender;
+    protected $paymentRepository;
 
     public function __construct(
         \PayMaya\Payment\Model\Order\Email\Sender\OrderSender $orderSender,
         \Magento\Sales\Model\ResourceModel\Order\CollectionFactory $orderCollectionFactory,
-        \PayMaya\Payment\Logger\Logger $logger
+        \PayMaya\Payment\Logger\Logger $logger,
+        \Magento\Sales\Api\OrderRepositoryInterface $orderRepository,
+        \Magento\Sales\Api\OrderPaymentRepositoryInterface $paymentRepository
     ) {
         $this->orderSender = $orderSender;
         $this->orderCollectionFactory = $orderCollectionFactory;
         $this->logger = $logger;
+        $this->orderRepository = $orderRepository;
+        $this->paymentRepository = $paymentRepository;
     }
 
     /**
@@ -51,9 +57,11 @@ class Order
      */
     public function setAsPaid($order)
     {
-        /** Set order state and status to processing */
-        $order->setState(MagentoOrder::STATE_PROCESSING, true)->save();
-        $order->setStatus(MagentoOrder::STATE_PROCESSING)->save();
+        /** Set order state and status to processing, then save once through the repository */
+        $order->setState(MagentoOrder::STATE_PROCESSING);
+        $order->setStatus(MagentoOrder::STATE_PROCESSING);
+
+        $this->orderRepository->save($order);
 
         /** Send order confirmation e-mail */
         $this->orderSender->sendMayaConfirmation($order);
@@ -61,9 +69,13 @@ class Order
 
     public function setAsFailed($order, $paymentId)
     {
-        $order->setState(MagentoOrder::STATE_CANCELED, true)->save();
-        $order->setStatus(MagentoOrder::STATE_CANCELED)->save();
-        $order->addCommentToStatusHistory("Failed payment {$paymentId}", MagentoOrder::STATE_HOLDED, true)->save();
+        $safePaymentId = $paymentId ?? 'Unknown';
+
+        $order->setState(MagentoOrder::STATE_CANCELED);
+        $order->setStatus(MagentoOrder::STATE_CANCELED);
+        $order->addCommentToStatusHistory("Failed payment {$safePaymentId}", $order->getStatus(), true);
+
+        $this->orderRepository->save($order);
     }
 
     /**
@@ -85,7 +97,9 @@ class Order
      */
     public function addComment($order, $comment)
     {
-        $order->addCommentToStatusHistory($comment)->save();
+        $order->addCommentToStatusHistory($comment);
+
+        $this->orderRepository->save($order);
     }
 
     /**
@@ -93,6 +107,10 @@ class Order
      */
     public function createTransaction($order, $paymentId)
     {
+        if (empty($paymentId)) {
+            throw new \InvalidArgumentException('A valid Maya payment ID is required to create a transaction.');
+        }
+
         /** Get associated payment model */
         $payment = $order->getPayment();
 
@@ -111,11 +129,14 @@ class Order
          */
         $payment->setIsTransactionClosed(0);
 
-        /** Save the payment changes above */
-        $payment->save();
+        /** Save the payment changes above through the repository */
+        $this->paymentRepository->save($payment);
 
         /** Add a transaction record */
         $transaction = $payment->addTransaction(Transaction::TYPE_ORDER, null, false);
+
+        /** Save the order before the standalone transaction so that no orphan transaction is left behind */
+        $this->orderRepository->save($order);
 
         /** Save the transaction record */
         $transaction->save();
