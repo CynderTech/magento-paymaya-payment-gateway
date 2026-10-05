@@ -56,8 +56,13 @@ class PaymentVerifier
             return $this->reject($incrementId, 'order was not placed with Maya');
         }
 
+        // The cache below only exists to stop forged ids, and a forged id is never one of the checkouts
+        // stored for the order. A stored checkout id is not remembered as rejected, so a 404 given
+        // before the buyer paid cannot block the genuine webhook that follows.
+        $isOurCheckout = in_array($paymentId, self::checkoutIds($payment), true);
+
         $rejectedKey = self::REJECTED_CACHE_PREFIX . sha1((string) $paymentId);
-        if ($this->cache->load($rejectedKey)) {
+        if (!$isOurCheckout && $this->cache->load($rejectedKey)) {
             return $this->reject($incrementId, 'Maya recently answered that this payment does not exist');
         }
 
@@ -71,7 +76,9 @@ class PaymentVerifier
             // Only "no such payment" answers are final. Anything else (401/403 wrong or rotated
             // key or mode, 408, 429) must not drop a genuine payment, so let Maya retry.
             if (in_array($code, [400, 404, 422], true)) {
-                $this->cache->save('1', $rejectedKey, [], self::REJECTED_CACHE_TTL);
+                if (!$isOurCheckout) {
+                    $this->cache->save('1', $rejectedKey, [], self::REJECTED_CACHE_TTL);
+                }
 
                 return $this->reject($incrementId, "Maya answered {$code} for the payment");
             }
@@ -116,8 +123,7 @@ class PaymentVerifier
         // storing them failed): leaving an order pending is safe, canceling on an unverifiable
         // notice is not. A confirmed, fully matching success is always accepted: it is money
         // received for this very order, and the binding is not verified for every payment method.
-        $checkoutIds = self::checkoutIds($payment);
-        if (!in_array($paymentId, $checkoutIds, true)) {
+        if (!$isOurCheckout) {
             if ($status !== self::STATUS_SUCCESS) {
                 return $this->reject($incrementId, 'failure notice for a payment that is not from a checkout created for this order');
             }

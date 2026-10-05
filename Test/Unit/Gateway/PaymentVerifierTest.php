@@ -250,6 +250,37 @@ class PaymentVerifierTest extends TestCase
         return ['bad request' => [400], 'not found' => [404], 'unprocessable' => [422]];
     }
 
+    public function testAStoredCheckoutIdIsNeverTakenFromTheRejectedCache()
+    {
+        // A 404 given before the buyer paid may have been cached by someone who saw the checkout URL.
+        $this->cache->method('load')->willReturn('1');
+        $this->client->expects($this->once())->method('retrievePayment')->willReturn($this->mayaPayment());
+
+        $order = $this->order('paymaya_payment', 1500.50, 'PHP', [self::PAYMENT_ID]);
+        $this->assertSame('PAYMENT_SUCCESS', $this->verifier->verify($order, self::PAYMENT_ID));
+    }
+
+    #[DataProvider('finalMayaAnswers')]
+    public function testANotFoundAnswerForAStoredCheckoutIdIsNeverRemembered($code)
+    {
+        $this->client->method('retrievePayment')->willThrowException(
+            new ClientException('no', new Request('GET', '/'), new Response($code))
+        );
+        $this->cache->expects($this->never())->method('save');
+
+        $order = $this->order('paymaya_payment', 1500.50, 'PHP', [self::PAYMENT_ID]);
+        $this->assertNull($this->verifier->verify($order, self::PAYMENT_ID));
+    }
+
+    public function testAnIdThatIsNotOneOfTheStoredCheckoutsStillUsesTheCache()
+    {
+        $this->cache->method('load')->willReturn('1');
+        $this->client->expects($this->never())->method('retrievePayment');
+
+        $order = $this->order('paymaya_payment', 1500.50, 'PHP', ['bbbbbbbb-575e-4472-91c8-19ce9dd3dc1e']);
+        $this->assertNull($this->verifier->verify($order, self::PAYMENT_ID));
+    }
+
     #[DataProvider('retryableClientErrors')]
     public function testRetryableErrorsAreNeverRemembered($code)
     {
