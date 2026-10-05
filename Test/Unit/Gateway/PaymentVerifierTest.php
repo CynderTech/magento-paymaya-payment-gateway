@@ -6,6 +6,7 @@ use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
+use Magento\Framework\App\CacheInterface;
 use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Payment;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -18,13 +19,15 @@ class PaymentVerifierTest extends TestCase
 {
     const PAYMENT_ID = '35ea1192-575e-4472-91c8-19ce9dd3dc1e';
 
+    private $cache;
     private $client;
     private $verifier;
 
     protected function setUp(): void
     {
         $this->client = $this->createMock(PayMayaClient::class);
-        $this->verifier = new PaymentVerifier($this->client, $this->createMock(Logger::class));
+        $this->cache = $this->createMock(CacheInterface::class);
+        $this->verifier = new PaymentVerifier($this->client, $this->createMock(Logger::class), $this->cache);
     }
 
     private function order($method = 'paymaya_payment', $total = 1500.50, $currency = 'PHP', $checkoutIds = null)
@@ -64,7 +67,7 @@ class PaymentVerifierTest extends TestCase
         foreach (['PAYMENT_FAILED', 'PAYMENT_EXPIRED'] as $status) {
             $client = $this->createMock(PayMayaClient::class);
             $client->method('retrievePayment')->willReturn($this->mayaPayment(['status' => $status, 'amount' => 1500.5]));
-            $verifier = new PaymentVerifier($client, $this->createMock(Logger::class));
+            $verifier = new PaymentVerifier($client, $this->createMock(Logger::class), $this->createStub(CacheInterface::class));
             $order = $this->order('paymaya_payment', 1500.50, 'PHP', [self::PAYMENT_ID]);
             $this->assertSame($status, $verifier->verify($order, self::PAYMENT_ID));
         }
@@ -159,7 +162,7 @@ class PaymentVerifierTest extends TestCase
         $client->method('retrievePayment')->willReturn($this->mayaPayment());
         $order = $this->order('paymaya_payment', 1500.50, 'PHP', ['bbbbbbbb-575e-4472-91c8-19ce9dd3dc1e']);
 
-        $this->assertSame('PAYMENT_SUCCESS', (new PaymentVerifier($client, $logger))->verify($order, self::PAYMENT_ID));
+        $this->assertSame('PAYMENT_SUCCESS', (new PaymentVerifier($client, $logger, $this->createStub(CacheInterface::class)))->verify($order, self::PAYMENT_ID));
     }
 
     public function testConfirmedSuccessFromAnotherCheckoutIsStillAccepted()
@@ -216,6 +219,65 @@ class PaymentVerifierTest extends TestCase
     {
         $this->client->method('retrievePayment')->willReturn($this->mayaPayment());
         $this->assertSame('PAYMENT_SUCCESS', $this->verifier->verify($this->order('paymaya_payment', 1500.50, 'PHP', []), self::PAYMENT_ID));
+    }
+
+    public function testARepeatedForgedPaymentIdDoesNotCallMayaAgain()
+    {
+        $this->cache->method('load')->willReturn('1');
+        $this->client->expects($this->never())->method('retrievePayment');
+
+        $this->assertNull($this->verifier->verify($this->order(), self::PAYMENT_ID));
+    }
+
+    #[DataProvider('finalMayaAnswers')]
+    public function testAFinalNoSuchPaymentAnswerIsRememberedBriefly($code)
+    {
+        $this->client->method('retrievePayment')->willThrowException(
+            new ClientException('no', new Request('GET', '/'), new Response($code))
+        );
+        $this->cache->expects($this->once())->method('save')->with(
+            '1',
+            'paymaya_rejected_payment_' . sha1(self::PAYMENT_ID),
+            [],
+            PaymentVerifier::REJECTED_CACHE_TTL
+        );
+
+        $this->assertNull($this->verifier->verify($this->order(), self::PAYMENT_ID));
+    }
+
+    public static function finalMayaAnswers(): array
+    {
+        return ['bad request' => [400], 'not found' => [404], 'unprocessable' => [422]];
+    }
+
+    #[DataProvider('retryableClientErrors')]
+    public function testRetryableErrorsAreNeverRemembered($code)
+    {
+        $this->client->method('retrievePayment')->willThrowException(
+            new ClientException('nope', new Request('GET', '/'), new Response($code))
+        );
+        $this->cache->expects($this->never())->method('save');
+
+        try {
+            $this->verifier->verify($this->order(), self::PAYMENT_ID);
+            $this->fail('Expected a RuntimeException');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString((string) $code, $e->getMessage());
+        }
+    }
+
+    public function testMismatchesAndSuccessesAreNeverRemembered()
+    {
+        $this->cache->expects($this->never())->method('save');
+
+        // a real payment id sent with the wrong order number must not block the right order's webhook
+        $this->client->method('retrievePayment')->willReturn($this->mayaPayment(['requestReferenceNumber' => '000000043']));
+        $this->assertNull($this->verifier->verify($this->order(), self::PAYMENT_ID));
+
+        $ok = $this->createMock(PayMayaClient::class);
+        $ok->method('retrievePayment')->willReturn($this->mayaPayment());
+        $verifier = new PaymentVerifier($ok, $this->createMock(Logger::class), $this->cache);
+        $this->assertSame('PAYMENT_SUCCESS', $verifier->verify($this->order(), self::PAYMENT_ID));
     }
 
     public function testRejectsUnprocessableRequest()

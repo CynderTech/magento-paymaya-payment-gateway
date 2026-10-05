@@ -18,18 +18,27 @@ class PaymentVerifier
     const MAX_CHECKOUT_IDS = 10;
 
     // PAYMENT_CANCELLED (buyer walked away) is deliberately not actionable: the order stays pending.
+    // Maya's final "no such payment" answers are remembered briefly, so repeating a forged payment id
+    // does not cost another call on the secret key. Only those answers are cached, never a mismatch
+    // of reference, amount, currency or checkout and never a retryable error.
+    const REJECTED_CACHE_PREFIX = 'paymaya_rejected_payment_';
+    const REJECTED_CACHE_TTL = 300;
+
     const FAILURE_STATUSES = ['PAYMENT_FAILED', 'PAYMENT_EXPIRED'];
     const ACTIONABLE_STATUSES = ['PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'PAYMENT_EXPIRED'];
 
+    protected $cache;
     protected $client;
     protected $logger;
 
     public function __construct(
         \PayMaya\Payment\Api\PayMayaClient $client,
-        \PayMaya\Payment\Logger\Logger $logger
+        \PayMaya\Payment\Logger\Logger $logger,
+        \Magento\Framework\App\CacheInterface $cache
     ) {
         $this->client = $client;
         $this->logger = $logger;
+        $this->cache = $cache;
     }
 
     /**
@@ -47,6 +56,11 @@ class PaymentVerifier
             return $this->reject($incrementId, 'order was not placed with Maya');
         }
 
+        $rejectedKey = self::REJECTED_CACHE_PREFIX . sha1((string) $paymentId);
+        if ($this->cache->load($rejectedKey)) {
+            return $this->reject($incrementId, 'Maya recently answered that this payment does not exist');
+        }
+
         try {
             $maya = $this->client->retrievePayment($paymentId);
         } catch (\InvalidArgumentException $e) {
@@ -57,6 +71,8 @@ class PaymentVerifier
             // Only "no such payment" answers are final. Anything else (401/403 wrong or rotated
             // key or mode, 408, 429) must not drop a genuine payment, so let Maya retry.
             if (in_array($code, [400, 404, 422], true)) {
+                $this->cache->save('1', $rejectedKey, [], self::REJECTED_CACHE_TTL);
+
                 return $this->reject($incrementId, "Maya answered {$code} for the payment");
             }
 
