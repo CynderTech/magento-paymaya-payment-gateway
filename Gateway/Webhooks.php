@@ -2,46 +2,16 @@
 
 namespace PayMaya\Payment\Gateway;
 
-/**
- * Class Webhooks
- * Handles incoming PayMaya webhooks and concurrency locking.
- */
 class Webhooks
 {
-    /**
-     * Webhook event types
-     */
     public const PAYMENT_SUCCESS = 'paymaya_payment_success_webhook';
     public const PAYMENT_FAILED = 'paymaya_payment_failed_webhook';
 
-    /**
-     * @var \Magento\Framework\App\CacheInterface
-     */
     protected $cache;
-
-    /**
-     * @var \PayMaya\Payment\Logger\Logger
-     */
     protected $logger;
-
-    /**
-     * @var \Magento\Framework\App\Request\Http
-     */
     protected $request;
-
-    /**
-     * @var \Magento\Framework\Event\ManagerInterface
-     */
     protected $eventManager;
 
-    /**
-     * Webhooks constructor.
-     *
-     * @param \Magento\Framework\App\CacheInterface $cache
-     * @param \Magento\Framework\Event\ManagerInterface $eventManager
-     * @param \Magento\Framework\App\Request\Http $request
-     * @param \PayMaya\Payment\Logger\Logger $logger
-     */
     public function __construct(
         \Magento\Framework\App\CacheInterface $cache,
         \Magento\Framework\Event\ManagerInterface $eventManager,
@@ -55,73 +25,76 @@ class Webhooks
     }
 
     /**
-     * Dispatch webhook event
-     *
-     * @param string $eventType
-     * @return void
+     * @return int HTTP status for Maya: 200 handled or ignored, 400 unreadable body,
+     *             500 on an internal error so that Maya retries later
      */
     public function dispatchEvent($eventType)
     {
-        try {
-            if ($this->request->getMethod() === 'GET') {
-                $this->logger->info("Webhooks are working correctly!");
-                return;
-            }
-
+        try
+        {
             // Retrieve the request's body and parse it as JSON
-            $body = $this->request->getContent();
+            $payload = json_decode($this->request->getContent(), true);
 
-            $this->logger->debug('[Handle Webhook] For ' . $eventType . ' with payload ' . $body);
-
-            $payload = json_decode($body, true);
-
-            if (json_last_error() !== JSON_ERROR_NONE || !is_array($payload)) {
-                throw new \InvalidArgumentException(
-                    'Invalid or malformed JSON payload received: ' . json_last_error_msg()
-                );
+            if (!self::isJsonObject($payload))
+            {
+                $this->logger->warning('[Handle Webhook] Rejected ' . $eventType . ': body is not a JSON object');
+                return 400;
             }
 
             $this->eventManager->dispatch(
                 $eventType,
-                [
+                array(
                     'data' => $payload
-                ]
+                )
             );
 
             $this->logger->info("[Handle Webhook] 200 OK");
-        } catch (\Exception $e) {
+            return 200;
+        }
+        catch (\Exception $e)
+        {
             $this->logger->error('[Handle Webhook] ' . $e->getMessage());
+            return 500;
         }
     }
 
-    /**
-     * When multiple events arrive at the same time, lock the current process so that we don't get DB deadlocks.
-     * * Works similar to a queuing system, but is real time rather than cron-based.
-     *
-     * @return void
-     */
+    // A decoded JSON object is an associative array; a list such as [{"id":"x"}] is not an event
+    private static function isJsonObject($payload)
+    {
+        if (!is_array($payload) || $payload === []) {
+            return false;
+        }
+
+        $expected = 0;
+        foreach ($payload as $key => $_) {
+            if ($key !== $expected++) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // When multiple events arrive at the same time, lock the current process so that we don't get DB deadlocks
+    // Works similar to a queuing system, but is real time rather than cron-based
     public function lock()
     {
         $wait = 70; // seconds to wait for lock
         $sleep = 2; // poll every X seconds
-        
-        do {
+        do
+        {
             $lock = $this->cache->load("paymaya_payment_webhooks_lock");
-            if ($lock) {
-                // phpcs:ignore Magento2.Functions.DiscouragedFunction
+            if ($lock)
+            {
                 sleep($sleep);
                 $wait -= $sleep;
             }
+
         } while ($lock && $wait > 0);
 
-        $this->cache->save(1, "paymaya_payment_webhooks_lock", [], 60);
+        $this->cache->save(1, "paymaya_payment_webhooks_lock", array(), $lifetime = 60);
     }
 
-    /**
-     * Unlock the webhook processing
-     *
-     * @return void
-     */
     public function unlock()
     {
         $this->cache->remove("paymaya_payment_webhooks_lock");

@@ -57,11 +57,6 @@
         </arguments>
     </virtualType>
 
-     <!-- CSRF Overwrite -->
-    <type name="Magento\Framework\App\Request\CsrfValidator">
-        <plugin name="paymaya_csrf_validator_skip" type="PayMaya\Payment\Plugin\CsrfValidatorSkip" sortOrder="30" />
-    </type>
-
     <type name="PayMaya\Payment\Logger\Handler">
         <arguments>
             <argument name="filesystem" xsi:type="object">Magento\Framework\Filesystem\Driver\File</argument>

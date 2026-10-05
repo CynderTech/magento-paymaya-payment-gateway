@@ -66,7 +66,7 @@ class Index extends \Magento\Framework\App\Action\Action
 
         // Guard against null/empty order IDs to prevent TypeErrors
         if (!$orderId) {
-            $this->logger->error('[Create Checkout] Execution halted: No active order ID found in session.');
+            $this->logger->info('[Create Checkout] No active order ID found in session; no checkout created');
             $resultRedirect->setPath('checkout/cart');
             return $resultRedirect;
         }
@@ -78,6 +78,15 @@ class Index extends \Magento\Framework\App\Action\Action
             $this->logger->error(sprintf('[Create Checkout] Order entity not found for ID %s', (string)$orderId));
             $this->checkoutSession->restoreQuote();
             $this->messageManager->addErrorMessage(__('Something went wrong with the payment'));
+            $resultRedirect->setPath('checkout/cart');
+            return $resultRedirect;
+        }
+
+        // This is reached by a plain GET redirect after the order is placed, so it must only ever act on
+        // an order of this session that is still waiting for its Maya payment: a reload after paying, a
+        // canceled order or someone else's request must not create another checkout.
+        if (!\PayMaya\Payment\Gateway\Order::awaitsMayaPayment($order)) {
+            $this->logger->info('[Create Checkout] No order awaiting a Maya payment in this session; no checkout created');
             $resultRedirect->setPath('checkout/cart');
             return $resultRedirect;
         }
@@ -98,6 +107,8 @@ class Index extends \Magento\Framework\App\Action\Action
                 return $resultRedirect;
             }
 
+            $this->rememberCheckoutId($order, $checkout["checkoutId"] ?? null);
+
             $resultRedirect->setUrl($checkout["redirectUrl"]);
             return $resultRedirect;
             
@@ -109,6 +120,26 @@ class Index extends \Magento\Framework\App\Action\Action
             
             $resultRedirect->setPath('checkout/cart');
             return $resultRedirect;
+        }
+    }
+
+    /**
+     * Maya's payment ID is the ID of the checkout that was paid, so keeping every checkout created for
+     * the order lets PaymentVerifier reject payments created through any other checkout.
+     */
+    private function rememberCheckoutId($order, $checkoutId)
+    {
+        if (!is_string($checkoutId) || $checkoutId === '') {
+            return;
+        }
+
+        try {
+            $payment = $order->getPayment();
+            \PayMaya\Payment\Gateway\PaymentVerifier::rememberCheckoutId($payment, $checkoutId);
+            $payment->save();
+        } catch (\Exception $e) {
+            // Not fatal: without it verification falls back to the reference, amount and currency checks.
+            $this->logger->error('[Create Checkout] Could not store the checkout ID: ' . $e->getMessage());
         }
     }
 }

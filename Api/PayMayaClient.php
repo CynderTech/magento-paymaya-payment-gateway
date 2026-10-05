@@ -128,6 +128,30 @@ class PayMayaClient
     }
 
     /**
+     * Retrieve a payment by its ID using the secret key.
+     * Throws \InvalidArgumentException for a malformed ID, a Guzzle exception for
+     * non-2xx responses or connection errors, and \UnexpectedValueException when
+     * the body is not a JSON object.
+     */
+    public function retrievePayment($paymentId)
+    {
+        if (!is_string($paymentId) || !preg_match('/^[A-Za-z0-9-]{8,64}$/D', $paymentId)) {
+            throw new \InvalidArgumentException('Invalid Maya payment ID');
+        }
+
+        $response = $this->client->get('/payments/v1/payments/' . $paymentId, ['timeout' => 15]);
+        $payment = json_decode((string) $response->getBody(), true);
+
+        // A payment is a JSON object. Anything else (a list, a scalar, nothing) is an unexpected answer
+        // that must make the webhook fail with a 500 so that Maya retries, not be judged as a mismatch.
+        if (!is_array($payment) || $payment === [] || array_keys($payment) === range(0, count($payment) - 1)) {
+            throw new \UnexpectedValueException('Maya payment response is not a JSON object');
+        }
+
+        return $payment;
+    }
+
+    /**
      * Create a checkout session
      *
      * @param \Magento\Sales\Model\Order $order
@@ -140,7 +164,8 @@ class PayMayaClient
 
         $payload = $this->formatOrderForPayment($order);
 
-        $this->logger->debug('[Create Checkout][Payload]' . json_encode($payload));
+        $this->logger->debug('[Create Checkout] Order ' . $order->getIncrementId()
+            . ' ' . $payload['totalAmount']['value'] . ' ' . $payload['totalAmount']['currency']);
 
         $response = $this->client->post('/checkout/v1/checkouts', [
             'json' => $payload,
