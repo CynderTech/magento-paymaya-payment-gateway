@@ -21,5 +21,29 @@ With Maya Checkout, your website or app can directly accept credit and debit car
 ## Don't have an account yet? [Click here to get started](https://developers.maya.ph/docs/magento-2)
 
 ### Version Compatibility
-This version (1.2.2) is currently compatible with the following Magento version:
+This version (1.3.0) is currently compatible with the following Magento version:
 * 2.4 (up to 2.4.9)
+
+
+### Changelog
+
+#### 1.3.0
+
+**Security**
+* Fixes a critical issue in payment webhook handling. Payment confirmations are now verified directly with Maya before an order changes state. All stores should upgrade immediately.
+* Webhook endpoints accept POST only and return correct HTTP status codes, so Maya retries webhooks the module cannot process yet.
+* Buyer details and raw webhook bodies are no longer written to the Maya log.
+
+**Behaviour changes**
+* A payment failure or expiry notice no longer cancels an order that was placed before this version. Those orders stay pending and can be canceled by the merchant.
+* If Maya confirms a payment for an order that was already canceled in Magento and its items released, the order is not reopened. The order receives a comment and a critical log entry so the merchant can fulfil or refund it.
+* The payment page creates a Maya checkout only for an order that was placed with Maya and is still awaiting payment.
+* The Maya checkout IDs of an order are stored on its payment information.
+
+**Compatibility**
+* Includes the Adobe Commerce 2.4.9 compatibility updates released in 1.2.x.
+
+**Upgrade notes**
+* Run `bin/magento setup:di:compile` on production stores, then flush the cache.
+* The secret key of the active mode must be correct. A wrong key makes webhook handling return an error and Maya keeps retrying.
+* Limit traffic to the webhook endpoints at the web server or firewall, ideally to the webhook source addresses that Maya publishes for each environment.
