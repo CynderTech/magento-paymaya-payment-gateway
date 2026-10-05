@@ -66,7 +66,7 @@ class Index extends \Magento\Framework\App\Action\Action
 
         // Guard against null/empty order IDs to prevent TypeErrors
         if (!$orderId) {
-            $this->logger->error('[Create Checkout] Execution halted: No active order ID found in session.');
+            $this->logger->info('[Create Checkout] No active order ID found in session; no checkout created');
             $resultRedirect->setPath('checkout/cart');
             return $resultRedirect;
         }
