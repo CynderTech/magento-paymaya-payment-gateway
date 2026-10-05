@@ -2,7 +2,13 @@
 
 namespace PayMaya\Payment\Controller\Webhooks;
 
-class Payment extends \Magento\Framework\App\Action\Action
+use Magento\Framework\App\CsrfAwareActionInterface;
+use Magento\Framework\App\Request\InvalidRequestException;
+use Magento\Framework\App\RequestInterface;
+
+class Payment extends \Magento\Framework\App\Action\Action implements
+    \Magento\Framework\App\Action\HttpPostActionInterface,
+    CsrfAwareActionInterface
 {
     protected $webhooks;
 
@@ -18,7 +24,28 @@ class Payment extends \Magento\Framework\App\Action\Action
     public function execute()
     {
         $this->webhooks->lock();
-        $this->webhooks->dispatchEvent('paymaya_payment_webhook_event');
-        $this->webhooks->unlock();
+
+        try {
+            $status = $this->webhooks->dispatchEvent('paymaya_payment_webhook_event');
+        } finally {
+            $this->webhooks->unlock();
+        }
+
+        /** @var \Magento\Framework\Controller\Result\Raw $result */
+        $result = $this->resultFactory->create(\Magento\Framework\Controller\ResultFactory::TYPE_RAW);
+        $result->setHttpResponseCode($status);
+
+        return $result;
+    }
+
+    // Maya cannot send a form key. Authenticity comes from re-querying Maya, not from the request.
+    public function createCsrfValidationException(RequestInterface $request): ?InvalidRequestException
+    {
+        return null;
+    }
+
+    public function validateForCsrf(RequestInterface $request): ?bool
+    {
+        return true;
     }
 }
